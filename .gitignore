@@ -1,0 +1,7 @@
+.dart_tool/
+build/
+*.so
+*.db
+*.db-wal
+*.db-shm
+.DS_Store

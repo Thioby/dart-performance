@@ -1,0 +1,1096 @@
+{
+  "dart": "3.13.5 (stable) (Tue Sep 29 01:00:52 2026 -0700) on \"linux_x64\"",
+  "mode": "JIT",
+  "results": [
+    {
+      "suite": "typed_lists/sum int (65k elementów)",
+      "name": "List<int> indexed loop",
+      "ns_per_op": 56422.97111416781,
+      "ops_per_sec": 17723.277953168614,
+      "iterations": 30534,
+      "samples_ns_per_op": [
+        54165.291150848236,
+        54393.62677670793,
+        55214.580467675376,
+        56422.97111416781,
+        56602.246675836774,
+        57066.71251719395,
+        59753.78266850069
+      ],
+      "rss_delta_bytes": 12288
+    },
+    {
+      "suite": "typed_lists/sum int (65k elementów)",
+      "name": "List<int> for-in",
+      "ns_per_op": 49175.974710221286,
+      "ops_per_sec": 20335.13328190623,
+      "iterations": 46501,
+      "samples_ns_per_op": [
+        43310.10085804606,
+        45076.170404937526,
+        46456.11922324251,
+        49175.974710221286,
+        56937.07662200813,
+        64204.42571127503,
+        80724.52205328918
+      ],
+      "rss_delta_bytes": 45056
+    },
+    {
+      "suite": "typed_lists/sum int (65k elementów)",
+      "name": "Int64List indexed loop",
+      "ns_per_op": 114727.00534759359,
+      "ops_per_sec": 8716.343610384101,
+      "iterations": 26180,
+      "samples_ns_per_op": [
+        80895.45454545454,
+        81565.24064171124,
+        105014.17112299465,
+        114727.00534759359,
+        116918.44919786096,
+        118456.95187165776,
+        133921.39037433156
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "typed_lists/sum int (65k elementów)",
+      "name": "Int32List indexed loop",
+      "ns_per_op": 63957.68421052631,
+      "ops_per_sec": 15635.337838505066,
+      "iterations": 33250,
+      "samples_ns_per_op": [
+        56736.42105263158,
+        57475.57894736842,
+        58396.84210526316,
+        63957.68421052631,
+        64041.47368421053,
+        68378.1052631579,
+        69777.68421052632
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "typed_lists/sum int (65k elementów)",
+      "name": "Uint8List indexed loop",
+      "ns_per_op": 66269.32340705059,
+      "ops_per_sec": 15089.938278947437,
+      "iterations": 31969,
+      "samples_ns_per_op": [
+        61150.42697613313,
+        62786.73089555507,
+        62857.23669805124,
+        66269.32340705059,
+        69711.84585066783,
+        72353.1858988395,
+        85202.75892270637
+      ],
+      "rss_delta_bytes": 4096
+    },
+    {
+      "suite": "typed_lists/sum double (65k elementów)",
+      "name": "List<double> indexed loop (boxed)",
+      "ns_per_op": 90968.40705021616,
+      "ops_per_sec": 10992.827426866806,
+      "iterations": 21049,
+      "samples_ns_per_op": [
+        82651.8124376455,
+        82828.73295643498,
+        90280.01330229464,
+        90968.40705021616,
+        100543.06617891586,
+        101601.5962753575,
+        127244.09710675091
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "typed_lists/sum double (65k elementów)",
+      "name": "Float64List przez top-level final (leniwy getter w pętli)",
+      "ns_per_op": 216602.1505376344,
+      "ops_per_sec": 4616.759332803813,
+      "iterations": 9114,
+      "samples_ns_per_op": [
+        192241.93548387097,
+        193784.94623655913,
+        195558.3717357911,
+        216602.1505376344,
+        217410.90629800307,
+        218266.51305683563,
+        224183.56374807988
+      ],
+      "rss_delta_bytes": 147456
+    },
+    {
+      "suite": "typed_lists/sum double (65k elementów)",
+      "name": "Float64List przekazana jako parametr/lokalna",
+      "ns_per_op": 82158.60058309037,
+      "ops_per_sec": 12171.580247264057,
+      "iterations": 24010,
+      "samples_ns_per_op": [
+        79784.54810495627,
+        80450.72886297376,
+        81221.86588921283,
+        82158.60058309037,
+        82289.50437317784,
+        82747.81341107872,
+        83690.37900874636
+      ],
+      "rss_delta_bytes": 385024
+    },
+    {
+      "suite": "typed_lists/build (65k elementów)",
+      "name": "List<int> growable add()",
+      "ns_per_op": 4014061.855670103,
+      "ops_per_sec": 249.12421281885332,
+      "iterations": 679,
+      "samples_ns_per_op": [
+        3706402.06185567,
+        3834628.8659793814,
+        4003030.9278350514,
+        4014061.855670103,
+        4029164.9484536084,
+        4063226.8041237113,
+        4307701.030927835
+      ],
+      "rss_delta_bytes": 22806528
+    },
+    {
+      "suite": "typed_lists/build (65k elementów)",
+      "name": "List<int>.filled prealokowana",
+      "ns_per_op": 1022050.9090909091,
+      "ops_per_sec": 978.4248427404435,
+      "iterations": 1925,
+      "samples_ns_per_op": [
+        997312.7272727273,
+        1004549.0909090909,
+        1005047.2727272727,
+        1022050.9090909091,
+        1088221.8181818181,
+        1368647.2727272727,
+        1750080.0
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "typed_lists/build (65k elementów)",
+      "name": "Int32List prealokowana",
+      "ns_per_op": 405499.25261584454,
+      "ops_per_sec": 2466.0957906804433,
+      "iterations": 4683,
+      "samples_ns_per_op": [
+        349476.83109118085,
+        392375.18684603885,
+        397248.1315396114,
+        405499.25261584454,
+        497946.18834080716,
+        512385.65022421523,
+        533005.9790732437
+      ],
+      "rss_delta_bytes": -1863680
+    },
+    {
+      "suite": "typed_lists/build (65k elementów)",
+      "name": "List<double> growable add() (boxing)",
+      "ns_per_op": 6543255.813953488,
+      "ops_per_sec": 152.8291157236281,
+      "iterations": 301,
+      "samples_ns_per_op": [
+        5719627.9069767445,
+        6489837.209302326,
+        6517604.651162791,
+        6543255.813953488,
+        7360000.0,
+        7687069.76744186,
+        8442162.790697675
+      ],
+      "rss_delta_bytes": -15056896
+    },
+    {
+      "suite": "typed_lists/build (65k elementów)",
+      "name": "Float64List prealokowana",
+      "ns_per_op": 719551.6224188791,
+      "ops_per_sec": 1389.7543537437277,
+      "iterations": 2373,
+      "samples_ns_per_op": [
+        553374.6312684366,
+        622964.6017699115,
+        663377.581120944,
+        719551.6224188791,
+        834601.7699115045,
+        910755.1622418879,
+        973616.5191740413
+      ],
+      "rss_delta_bytes": 1585152
+    },
+    {
+      "suite": "soa/particles (10k cząstek, 1 klatka)",
+      "name": "List<Particle> map().toList() (alokuje 10k obj/klatkę)",
+      "ns_per_op": 237846.15384615384,
+      "ops_per_sec": 4204.398447606727,
+      "iterations": 8645,
+      "samples_ns_per_op": [
+        214579.75708502025,
+        216031.57894736843,
+        233262.34817813765,
+        237846.15384615384,
+        247578.94736842104,
+        250579.75708502025,
+        301628.34008097165
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "soa/particles (10k cząstek, 1 klatka)",
+      "name": "List<Particle> mutacja w miejscu (AoS)",
+      "ns_per_op": 33652.680895367,
+      "ops_per_sec": 29715.3146018055,
+      "iterations": 67235,
+      "samples_ns_per_op": [
+        30251.847995835502,
+        30489.953149401354,
+        31802.18636127017,
+        33652.680895367,
+        41423.84174908901,
+        42370.84851639771,
+        48245.91358667361
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "soa/particles (10k cząstek, 1 klatka)",
+      "name": "4x Float64List (SoA)",
+      "ns_per_op": 27145.633039945835,
+      "ops_per_sec": 36838.337810301266,
+      "iterations": 103390,
+      "samples_ns_per_op": [
+        15339.06567366283,
+        17756.3981042654,
+        21028.977657413678,
+        27145.633039945835,
+        30153.419092755586,
+        30460.189573459716,
+        33603.18212593094
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "soa/particles (10k cząstek, 1 klatka)",
+      "name": "1x Float64List ze stride (flat struct)",
+      "ns_per_op": 18406.567125589812,
+      "ops_per_sec": 54328.43577930105,
+      "iterations": 108297,
+      "samples_ns_per_op": [
+        18323.896322151122,
+        18363.71275289251,
+        18380.195203929932,
+        18406.567125589812,
+        18413.74183957081,
+        20893.542757417104,
+        30025.79018809385
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "json/encode feed (20 postów, ~2.6 KB)",
+      "name": "jsonEncode(map) + utf8.encode",
+      "ns_per_op": 60438.61184018664,
+      "ops_per_sec": 16545.7142305688,
+      "iterations": 24003,
+      "samples_ns_per_op": [
+        52188.10148731409,
+        54749.48964712744,
+        57064.158646835815,
+        60438.61184018664,
+        63586.17672790901,
+        64652.96004666083,
+        72776.9028871391
+      ],
+      "rss_delta_bytes": 561152
+    },
+    {
+      "suite": "json/encode feed (20 postów, ~2.6 KB)",
+      "name": "JsonUtf8Encoder().convert(map)",
+      "ns_per_op": 39032.156187194945,
+      "ops_per_sec": 25619.90158073984,
+      "iterations": 48762,
+      "samples_ns_per_op": [
+        37689.77892621303,
+        38056.27332759116,
+        38430.80677576802,
+        39032.156187194945,
+        39098.19121447029,
+        39240.16652311226,
+        45101.78007464829
+      ],
+      "rss_delta_bytes": 4096
+    },
+    {
+      "suite": "json/encode feed (20 postów, ~2.6 KB)",
+      "name": "ByteWriter: bajty prosto do Uint8List (zero-alloc)",
+      "ns_per_op": 8426.421073479896,
+      "ops_per_sec": 118674.3448113762,
+      "iterations": 141372,
+      "samples_ns_per_op": [
+        7595.464448405625,
+        7717.270746682511,
+        7757.377698554169,
+        8426.421073479896,
+        8442.216280451574,
+        10080.610021786493,
+        10182.263814616756
+      ],
+      "rss_delta_bytes": -524288
+    },
+    {
+      "suite": "json/decode feed (~2.6 KB)",
+      "name": "jsonDecode(utf8.decode(bytes))",
+      "ns_per_op": 38499.05183312263,
+      "ops_per_sec": 25974.665670588045,
+      "iterations": 44296,
+      "samples_ns_per_op": [
+        34171.77623261694,
+        35866.94058154235,
+        35940.42351453856,
+        38499.05183312263,
+        46856.35271807838,
+        52969.974715549935,
+        56553.88748419722
+      ],
+      "rss_delta_bytes": 8192
+    },
+    {
+      "suite": "json/decode feed (~2.6 KB)",
+      "name": "utf8.decoder.fuse(json.decoder).convert(bytes)",
+      "ns_per_op": 34483.14434569415,
+      "ops_per_sec": 28999.675608899866,
+      "iterations": 45682,
+      "samples_ns_per_op": [
+        32206.25191541526,
+        32468.74042292369,
+        32955.10266625805,
+        34483.14434569415,
+        34716.05884155685,
+        40594.39166411278,
+        40807.07937480846
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "strings/build 200 linii",
+      "name": "String += (kwadratowe kopiowanie)",
+      "ns_per_op": 108037.42283950618,
+      "ops_per_sec": 9256.051965304088,
+      "iterations": 18144,
+      "samples_ns_per_op": [
+        98512.34567901235,
+        99563.27160493827,
+        100260.03086419753,
+        108037.42283950618,
+        108556.71296296296,
+        110595.67901234567,
+        118456.40432098765
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "strings/build 200 linii",
+      "name": "StringBuffer.write",
+      "ns_per_op": 28634.342695087365,
+      "ops_per_sec": 34923.09953291033,
+      "iterations": 76517,
+      "samples_ns_per_op": [
+        25235.751532339218,
+        26137.49885646327,
+        26813.10035678346,
+        28634.342695087365,
+        31716.951788491446,
+        31914.463452566095,
+        31993.138779617602
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "strings/build 200 linii",
+      "name": "StringBuffer + utf8.encode (do socketu)",
+      "ns_per_op": 39880.327268286725,
+      "ops_per_sec": 25075.019903239638,
+      "iterations": 57323,
+      "samples_ns_per_op": [
+        37105.75161802418,
+        38293.442422762244,
+        39442.17853217731,
+        39880.327268286725,
+        43005.49517645622,
+        45309.195261936744,
+        47307.36353645134
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "strings/build 200 linii",
+      "name": "bajty prosto do reużywanego Uint8List",
+      "ns_per_op": 8833.027154256846,
+      "ops_per_sec": 113211.47128117637,
+      "iterations": 243866,
+      "samples_ns_per_op": [
+        8307.049773236122,
+        8541.047132441587,
+        8576.783971525347,
+        8833.027154256846,
+        9707.56070957001,
+        9781.129800792238,
+        11738.790975371721
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "buffers/assemble 16x512B fragmentów",
+      "name": "List<int> addAll (boxing)",
+      "ns_per_op": 104534.63105477592,
+      "ops_per_sec": 9566.20777162357,
+      "iterations": 15463,
+      "samples_ns_per_op": [
+        102541.42145767316,
+        103455.40968764147,
+        104520.14486192848,
+        104534.63105477592,
+        107591.67043911273,
+        113569.48845631507,
+        121273.42688999548
+      ],
+      "rss_delta_bytes": 131072
+    },
+    {
+      "suite": "buffers/assemble 16x512B fragmentów",
+      "name": "Uint8List: nowa kopia na fragment",
+      "ns_per_op": 13999.533603843105,
+      "ops_per_sec": 71430.95108007622,
+      "iterations": 150087,
+      "samples_ns_per_op": [
+        12646.891469614291,
+        12874.586073410755,
+        13957.044913949909,
+        13999.533603843105,
+        14180.402033487244,
+        14235.203581922486,
+        14588.545310386642
+      ],
+      "rss_delta_bytes": -39706624
+    },
+    {
+      "suite": "buffers/assemble 16x512B fragmentów",
+      "name": "BytesBuilder(copy:false).takeBytes()",
+      "ns_per_op": 2057.1847012532985,
+      "ops_per_sec": 486101.223381046,
+      "iterations": 1037183,
+      "samples_ns_per_op": [
+        1814.8870546470584,
+        2036.3098893830693,
+        2053.0812788100075,
+        2057.1847012532985,
+        2173.5788187812564,
+        2434.80755083722,
+        2451.0457653085327
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "buffers/assemble 16x512B fragmentów",
+      "name": "prealokowany Uint8List + sublistView (zero-copy)",
+      "ns_per_op": 594.2042862138444,
+      "ops_per_sec": 1682922.8990787123,
+      "iterations": 3362968,
+      "samples_ns_per_op": [
+        455.5933925032888,
+        542.2876459127771,
+        587.9056833130735,
+        594.2042862138444,
+        617.8375768071537,
+        624.4171814896841,
+        627.5748089187884
+      ],
+      "rss_delta_bytes": 593920
+    },
+    {
+      "suite": "http/parse request (~430 B, 8 nagłówków)",
+      "name": "utf8.decode + split + Map<String,String>",
+      "ns_per_op": 4735.515748106603,
+      "ops_per_sec": 211170.24062264586,
+      "iterations": 366933,
+      "samples_ns_per_op": [
+        4222.266735344055,
+        4263.32055170835,
+        4543.238138842786,
+        4735.515748106603,
+        5070.92848013125,
+        5456.49478242622,
+        6899.101470840726
+      ],
+      "rss_delta_bytes": -45056
+    },
+    {
+      "suite": "http/parse request (~430 B, 8 nagłówków)",
+      "name": "skan bajtowy, offsety, 3 nagłówki (zero-alloc)",
+      "ns_per_op": 914.7106089751394,
+      "ops_per_sec": 1093241.9392406747,
+      "iterations": 1149932,
+      "samples_ns_per_op": [
+        746.244125739609,
+        771.5977988263654,
+        816.3456621782854,
+        914.7106089751394,
+        962.8917188146777,
+        1023.9718522486547,
+        1080.346490053325
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "collections/filter+map 10k",
+      "name": "where().map().toList()",
+      "ns_per_op": 200303.2839665164,
+      "ops_per_sec": 4992.4293810737745,
+      "iterations": 10871,
+      "samples_ns_per_op": [
+        150097.87508048938,
+        151839.0212491951,
+        165305.8596265293,
+        200303.2839665164,
+        208236.3168061816,
+        220505.47327752737,
+        238618.15840309078
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "collections/filter+map 10k",
+      "name": "pętla for + List.add",
+      "ns_per_op": 61651.19825708061,
+      "ops_per_sec": 16220.28489746589,
+      "iterations": 32130,
+      "samples_ns_per_op": [
+        60071.24183006536,
+        60412.85403050109,
+        61344.66230936819,
+        61651.19825708061,
+        64221.56862745098,
+        64429.41176470588,
+        71654.03050108932
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "collections/filter+map 10k",
+      "name": "2 pętle + Int32List (zero realokacji)",
+      "ns_per_op": 40242.00362100181,
+      "ops_per_sec": 24849.657323675412,
+      "iterations": 57995,
+      "samples_ns_per_op": [
+        36929.99396499698,
+        37211.1044055522,
+        38412.19070609535,
+        40242.00362100181,
+        42465.05733252867,
+        45300.78455039227,
+        47709.59565479783
+      ],
+      "rss_delta_bytes": -524288
+    },
+    {
+      "suite": "collections/sum 10k",
+      "name": "fold()",
+      "ns_per_op": 42787.41474713679,
+      "ops_per_sec": 23371.35828162923,
+      "iterations": 54397,
+      "samples_ns_per_op": [
+        36922.78985973491,
+        37739.54446017244,
+        40120.96255308197,
+        42787.41474713679,
+        43362.630292111695,
+        43624.88740187878,
+        50860.24964612019
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "collections/sum 10k",
+      "name": "reduce()",
+      "ns_per_op": 37389.964788732395,
+      "ops_per_sec": 26745.14420247204,
+      "iterations": 31808,
+      "samples_ns_per_op": [
+        36733.494718309856,
+        37016.72535211268,
+        37193.001760563384,
+        37389.964788732395,
+        37633.80281690141,
+        37815.140845070426,
+        40971.83098591549
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "collections/sum 10k",
+      "name": "pętla for",
+      "ns_per_op": 23699.538593884416,
+      "ops_per_sec": 42194.91430343908,
+      "iterations": 89509,
+      "samples_ns_per_op": [
+        21359.58395245171,
+        22524.595292093534,
+        22707.82826307969,
+        23699.538593884416,
+        25659.34151872996,
+        25887.933057011025,
+        26840.30656135137
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "collections/histogram 10k wartości 0..999",
+      "name": "Map<int,int>",
+      "ns_per_op": 329982.1002386635,
+      "ops_per_sec": 3030.4674080101254,
+      "iterations": 5866,
+      "samples_ns_per_op": [
+        325060.85918854416,
+        325140.81145584723,
+        327801.9093078759,
+        329982.1002386635,
+        339107.3985680191,
+        363340.0954653938,
+        400906.9212410501
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "collections/histogram 10k wartości 0..999",
+      "name": "Int32List[1000] jako tablica zliczeń",
+      "ns_per_op": 22636.925795053005,
+      "ops_per_sec": 44175.60975609756,
+      "iterations": 79240,
+      "samples_ns_per_op": [
+        20571.643109540637,
+        21194.87632508834,
+        22495.671378091873,
+        22636.925795053005,
+        23372.968197879858,
+        26662.27915194346,
+        29557.950530035334
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "ffi/call add(a,b)",
+      "name": "czysty Dart a+b (referencja)",
+      "ns_per_op": 5.428225763677066,
+      "ops_per_sec": 184222256.68863901,
+      "iterations": 33257644,
+      "samples_ns_per_op": [
+        5.004323216641564,
+        5.151868244184706,
+        5.4090722722271005,
+        5.428225763677066,
+        5.518099838942289,
+        5.567351674099344,
+        8.123185154065634
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "ffi/call add(a,b)",
+      "name": "FFI non-leaf",
+      "ns_per_op": 25.500515129506358,
+      "ops_per_sec": 39214894.0882732,
+      "iterations": 27265959,
+      "samples_ns_per_op": [
+        24.11699511467761,
+        24.193757498131646,
+        24.323149609371892,
+        25.500515129506358,
+        28.263190742713284,
+        32.10516087110672,
+        38.44871181681158
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "ffi/call add(a,b)",
+      "name": "FFI isLeaf: true",
+      "ns_per_op": 14.252237359807081,
+      "ops_per_sec": 70164422.2415291,
+      "iterations": 29396367,
+      "samples_ns_per_op": [
+        11.938380004576755,
+        13.209013209013209,
+        13.596680161191347,
+        14.252237359807081,
+        14.408209014399636,
+        15.420476958938497,
+        16.57323845494241
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "ffi/dot product 1024 double",
+      "name": "czysty Dart na Float64List (widok asTypedList)",
+      "ns_per_op": 1963.4686969731968,
+      "ops_per_sec": 509302.74648205965,
+      "iterations": 787927,
+      "samples_ns_per_op": [
+        1749.7623510807473,
+        1846.4832401986478,
+        1864.242499622427,
+        1963.4686969731968,
+        2249.6957205426393,
+        2444.1769351729286,
+        2983.2979451142046
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "ffi/dot product 1024 double",
+      "name": "C dot_f64 przez FFI isLeaf",
+      "ns_per_op": 1248.16621312417,
+      "ops_per_sec": 801175.3478705308,
+      "iterations": 1486814,
+      "samples_ns_per_op": [
+        1237.0881630116478,
+        1242.6624984698826,
+        1245.750981629175,
+        1248.16621312417,
+        1270.468263010706,
+        1299.0273161269668,
+        1416.4273406088455
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "ffi/read 4 KB z Pointer<Uint8>",
+      "name": "ptr[i] do List<int> (4096 wywołań)",
+      "ns_per_op": 19691.787698279903,
+      "ops_per_sec": 50782.59096239144,
+      "iterations": 104587,
+      "samples_ns_per_op": [
+        18879.593066059835,
+        19131.851951007295,
+        19456.261294424738,
+        19691.787698279903,
+        21077.370992570777,
+        21232.313767485444,
+        22514.35646877719
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "ffi/read 4 KB z Pointer<Uint8>",
+      "name": "Uint8List.fromList(asTypedList) (1 memcpy)",
+      "ns_per_op": 902.1161446793221,
+      "ops_per_sec": 1108504.7151611203,
+      "iterations": 1870288,
+      "samples_ns_per_op": [
+        789.2575902748667,
+        860.728935864423,
+        862.5291933648722,
+        902.1161446793221,
+        986.9116414156537,
+        1117.5332355230853,
+        1150.143721180909
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "ffi/read 4 KB z Pointer<Uint8>",
+      "name": "asTypedList widok (zero-copy)",
+      "ns_per_op": 23.708053054269733,
+      "ops_per_sec": 42179760.51052845,
+      "iterations": 24706626,
+      "samples_ns_per_op": [
+        18.62973924484873,
+        21.64629844641676,
+        23.543158017610338,
+        23.708053054269733,
+        24.933716161810196,
+        26.339573845493916,
+        28.45091029426681
+      ],
+      "rss_delta_bytes": -524288
+    },
+    {
+      "suite": "ffi/fill 256 B: alokacja natywna",
+      "name": "malloc + free per wywołanie",
+      "ns_per_op": 240.2043405292154,
+      "ops_per_sec": 4163122.1059403494,
+      "iterations": 3895654,
+      "samples_ns_per_op": [
+        217.05521075536996,
+        234.27106206043965,
+        238.76145058057003,
+        240.2043405292154,
+        283.9977575010512,
+        329.62937673622963,
+        339.26062222158333
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "ffi/fill 256 B: alokacja natywna",
+      "name": "Arena (using) per wywołanie",
+      "ns_per_op": 323.4875903652728,
+      "ops_per_sec": 3091308.6924627586,
+      "iterations": 3746323,
+      "samples_ns_per_op": [
+        311.4918281205331,
+        315.2942231622847,
+        317.81669653150567,
+        323.4875903652728,
+        328.13454686101545,
+        335.1358118346977,
+        336.3596785434678
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "ffi/fill 256 B: alokacja natywna",
+      "name": "reużywany bufor (zero-alloc)",
+      "ns_per_op": 161.25274354212394,
+      "ops_per_sec": 6201444.874882211,
+      "iterations": 9950640,
+      "samples_ns_per_op": [
+        157.98370758061793,
+        158.84546119646575,
+        158.96294107715684,
+        161.25274354212394,
+        166.0947436546795,
+        171.29832854972142,
+        184.07760706849007
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "ffi/fill 256 B: alokacja natywna",
+      "name": "reużywany bufor, non-leaf",
+      "ns_per_op": 166.70741697649504,
+      "ops_per_sec": 5998533.347445454,
+      "iterations": 8331225,
+      "samples_ns_per_op": [
+        164.19686180603694,
+        166.10918562396287,
+        166.65448358434685,
+        166.70741697649504,
+        175.31371436973555,
+        176.4043102905035,
+        186.18102379902115
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "sqlite/insert 10k wierszy (WAL, synchronous=NORMAL)",
+      "name": "execute(sql, args) per wiersz, autocommit",
+      "ns_per_op": 315382000.0,
+      "ops_per_sec": 3.1707580014078167,
+      "iterations": 3,
+      "samples_ns_per_op": [
+        307820000.0,
+        315382000.0,
+        325788000.0
+      ],
+      "rss_delta_bytes": -1572864
+    },
+    {
+      "suite": "sqlite/insert 10k wierszy (WAL, synchronous=NORMAL)",
+      "name": "prepared statement, autocommit per wiersz",
+      "ns_per_op": 264109000.0,
+      "ops_per_sec": 3.78631549852523,
+      "iterations": 3,
+      "samples_ns_per_op": [
+        231000000.0,
+        264109000.0,
+        290219000.0
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "sqlite/insert 10k wierszy (WAL, synchronous=NORMAL)",
+      "name": "prepared + paczki po 100 (BEGIN/COMMIT)",
+      "ns_per_op": 29864000.0,
+      "ops_per_sec": 33.4851326011251,
+      "iterations": 3,
+      "samples_ns_per_op": [
+        28615000.0,
+        29864000.0,
+        44886000.0
+      ],
+      "rss_delta_bytes": 524288
+    },
+    {
+      "suite": "sqlite/insert 10k wierszy (WAL, synchronous=NORMAL)",
+      "name": "prepared + paczki po 1000",
+      "ns_per_op": 19676000.0,
+      "ops_per_sec": 50.823338076844884,
+      "iterations": 3,
+      "samples_ns_per_op": [
+        15370000.0,
+        19676000.0,
+        20400000.0
+      ],
+      "rss_delta_bytes": -524288
+    },
+    {
+      "suite": "sqlite/insert 10k wierszy (WAL, synchronous=NORMAL)",
+      "name": "prepared + jedna transakcja (group commit)",
+      "ns_per_op": 24768000.0,
+      "ops_per_sec": 40.37467700258398,
+      "iterations": 3,
+      "samples_ns_per_op": [
+        20204000.0,
+        24768000.0,
+        26013000.0
+      ],
+      "rss_delta_bytes": 524288
+    },
+    {
+      "suite": "sqlite/select 10k wierszy",
+      "name": "select() -> ResultSet (lista Row)",
+      "ns_per_op": 4902500.0,
+      "ops_per_sec": 203.9775624681285,
+      "iterations": 30,
+      "samples_ns_per_op": [
+        4477666.666666667,
+        4495166.666666667,
+        4902500.0,
+        5008000.0,
+        5076000.0
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "sqlite/select 10k wierszy",
+      "name": "selectCursor() wiersz po wierszu",
+      "ns_per_op": 8106500.0,
+      "ops_per_sec": 123.35779929686055,
+      "iterations": 30,
+      "samples_ns_per_op": [
+        7923666.666666667,
+        8037833.333333333,
+        8106500.0,
+        8142000.0,
+        8324000.0
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "sqlite/select 10k wierszy",
+      "name": "stmt.raw: step() + columnInt64() (zero-alloc)",
+      "ns_per_op": 1084428.5714285714,
+      "ops_per_sec": 922.1446449743117,
+      "iterations": 245,
+      "samples_ns_per_op": [
+        979877.5510204082,
+        988693.8775510204,
+        1084428.5714285714,
+        1115183.6734693877,
+        1686857.142857143
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "sqlite/read 10k kolumn TEXT",
+      "name": "raw.columnText() -> String per wiersz",
+      "ns_per_op": 3184800.0,
+      "ops_per_sec": 313.99145943230343,
+      "iterations": 75,
+      "samples_ns_per_op": [
+        2062400.0,
+        3099000.0,
+        3184800.0,
+        3220733.3333333335,
+        3273466.6666666665
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "sqlite/read 10k kolumn TEXT",
+      "name": "CAST AS BLOB + raw.columnBlobInto(bufor) (zero-alloc)",
+      "ns_per_op": 1582818.1818181819,
+      "ops_per_sec": 631.7845040491643,
+      "iterations": 165,
+      "samples_ns_per_op": [
+        1447393.9393939395,
+        1469757.5757575757,
+        1582818.1818181819,
+        1935969.696969697,
+        1987575.7575757576
+      ],
+      "rss_delta_bytes": -1048576
+    },
+    {
+      "suite": "isolates/round-trip 10k rekordów",
+      "name": "List<Map> 10k obiektów (deep copy przez port)",
+      "ns_per_op": 9906500.0,
+      "ops_per_sec": 100.94382476152022,
+      "iterations": 100,
+      "samples_ns_per_op": [
+        9906500.0
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "isolates/round-trip 10k rekordów",
+      "name": "Uint8List 120 KB (kopia przez port)",
+      "ns_per_op": 91900.0,
+      "ops_per_sec": 10881.39281828074,
+      "iterations": 100,
+      "samples_ns_per_op": [
+        91900.0
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "isolates/round-trip 10k rekordów",
+      "name": "TransferableTypedData 120 KB (fromList kopia + move)",
+      "ns_per_op": 156050.0,
+      "ops_per_sec": 6408.202499198975,
+      "iterations": 100,
+      "samples_ns_per_op": [
+        156050.0
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "isolates/round-trip 10k rekordów",
+      "name": "Uint8List 16 MB (kopia przez port)",
+      "ns_per_op": 17217700.0,
+      "ops_per_sec": 58.07976675165673,
+      "iterations": 100,
+      "samples_ns_per_op": [
+        17217700.0
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "isolates/round-trip 10k rekordów",
+      "name": "TransferableTypedData 16 MB (fromList kopia + move)",
+      "ns_per_op": 8678600.0,
+      "ops_per_sec": 115.22595810384163,
+      "iterations": 100,
+      "samples_ns_per_op": [
+        8678600.0
+      ],
+      "rss_delta_bytes": 0
+    },
+    {
+      "suite": "isolates/round-trip 10k rekordów",
+      "name": "Isolate.run(() => trivial) — koszt spawn",
+      "ns_per_op": 367650.0,
+      "ops_per_sec": 2719.9782401740786,
+      "iterations": 100,
+      "samples_ns_per_op": [
+        367650.0
+      ],
+      "rss_delta_bytes": 0
+    }
+  ]
+}

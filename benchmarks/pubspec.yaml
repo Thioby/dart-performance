@@ -1,0 +1,17 @@
+name: dart_perf_benchmarks
+description: >-
+  Benchmarks "wolny vs szybki" dla przewodnika "Jak pisać ekstremalnie szybki
+  kod w Dart i Flutter". Każdy benchmark zestawia idiomatyczny, alokujący kod
+  z wariantem zero-allocation / typed-data / FFI.
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+dependencies:
+  sqlite3: ^3.7.1
+  ffi: ^2.1.0
+
+dev_dependencies:
+  lints: ^5.0.0
