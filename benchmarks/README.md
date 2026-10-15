@@ -1,3 +1,5 @@
+> 🇵🇱 Wersja polska · [🇬🇧 English version](README.en.md)
+
 # benchmarks — „wolny vs szybki” w Dart
 
 Każda grupa zestawia idiomatyczny kod (baseline) z wariantami zero-allocation / typed data / FFI. Liczby trafiają do przewodnika `docs/dart-flutter-extreme-performance-guide.md`.

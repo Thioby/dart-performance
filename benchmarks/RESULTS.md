@@ -1,4 +1,6 @@
-# Wyniki benchmarków
+# Benchmark results / Wyniki benchmarków
+
+> 🇬🇧 **English summary.** Reference run of `tool/run.sh` (JIT via `dart run`, AOT via `dart build cli`). Method: 100 ms warm-up, ~300 ms per sample, 7 samples, **median**; isolates: 5 × 20 round-trips, median. Raw data: `results/jit.json`, `results/aot.json`. Suite and variant names below are printed by the benchmark runner in Polish; the English guide (`docs/en/dart-flutter-extreme-performance-guide.md`) uses the same numbers with English labels, and `benchmarks/README.en.md` lists what each group measures. `vs baseline` > 1 means the variant is faster. Numbers quoted in the guides come from an earlier run on the same machine and configuration; the differences are within the min–max spread of individual samples.
 
 - Data: 2026-10-14
 - Dart SDK: 3.13.5 (linux_x64)

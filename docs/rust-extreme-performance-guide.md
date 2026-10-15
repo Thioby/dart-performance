@@ -1,3 +1,5 @@
+> 🇵🇱 Wersja polska · [🇬🇧 English version](en/rust-extreme-performance-guide.md)
+
 # Jak pisać ekstremalnie szybki kod w Rust — warsztat na bazie „Twelve Dollar Server Challenge”
 
 > Źródło: https://github.com/arjaythedev/twelve-dollar-server-challenge

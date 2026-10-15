@@ -1,3 +1,5 @@
+> 🇵🇱 Wersja polska · [🇬🇧 English version](en/dart-flutter-extreme-performance-guide.md)
+
 # Jak pisać ekstremalnie szybki kod w Dart i Flutter (Low-Latency / Zero-Allocation Dart)
 
 > Przewodnik oparty na analizie kodu źródłowego:
@@ -113,6 +115,34 @@ double score(int i) => _db.getFloat64(i * _rec + 4, Endian.little);
 void setScore(int i, double v) => _db.setFloat64(i * _rec + 4, v, Endian.little);
 ```
 
+Płaskie bufory nie muszą oznaczać brzydkiego API. `extension type` (Dart 3.3+) daje „obiekt” będący w czasie wykonania zwykłym `int`-em indeksu — zero alokacji, pełna czytelność:
+
+```dart
+extension type const Particle._(int i) {
+  Particle(this.i);
+  double get x => _x[i];       set x(double v) => _x[i] = v;
+  double get vx => _vx[i];     set vx(double v) => _vx[i] = v;
+  void step(double dt) => x += vx * dt;           // kompiluje się do: _x[i] += _vx[i] * dt
+}
+for (var i = 0; i < _count; i++) { Particle(i).step(dt); }   // Particle(i) to tylko int, nic nie trafia na stertę
+```
+
+Gdy obiektów nie da się spłaszczyć (np. muszą trafić do API Fluttera), **pula obiektów** zamienia 10k alokacji/klatkę na zero:
+
+```dart
+// 🐢 — nowy obiekt per zdarzenie
+void onPointer(double x, double y) => _events.add(TouchEvent(x, y));
+
+// 🚀 — pula: obiekty tworzone raz, reset() zamiast new
+class TouchEvent { double x = 0, y = 0; }
+final _pool = List.generate(256, (_) => TouchEvent(), growable: false);
+var _used = 0;
+TouchEvent acquire() => _pool[_used++];              // rzuć/rozszerz, gdy _used == length
+void endFrame() => _used = 0;                         // wszystkie obiekty z klatki „zwolnione” jednym przypisaniem
+```
+
+Pula działa tak samo dla `Paint`, `Path` (`path.reset()`), `TextPainter`, buforów `Uint8List` (`Worker.pool` w zwycięskim Ruście to ta sama idea: max 256 buforów ≤ 16 KB, zwracanych po wysyłce).
+
 Zawsze podawaj **stałe** `Endian.little` — z `flat_buffers.dart`: wszystkie akcesory (`_getUint32`, `_getInt64`…) mają `@pragma('vm:prefer-inline')` i literalny `Endian.little`, dzięki czemu VM składa to do jednej instrukcji load (`ByteData` bez endianness ma gałąź na host-endian).
 
 ### 1.4 Dlaczego `List<int>` jest wolne — i kiedy *nie* jest
@@ -207,17 +237,155 @@ double sumGood(Float64List l) { /* ta sama pętla na parametrze */ }
 
 Dotyczy `static final`, top-level `final`/`var` z nietrywialnym inicjalizatorem oraz `late final`. Zasada: **przed gorącą pętlą skopiuj referencję do lokalnej zmiennej**. ObjectBox i Isar robią to konsekwentnie (`final pointers = _store.readPointers();` przed użyciem).
 
-### 1.7 Kolekcje, stringi, bufory — szybka tabela (AOT)
+### 1.7 Kolekcje, stringi, bufory — przykłady (AOT)
+
+Najpierw tabela, potem każdy wiersz jako para kodu.
 
 | Przypadek | 🐢 | 🚀 | Zysk |
 |---|---|---|---:|
 | filter+map 10k | `where().map().toList()` 183 µs | 2 pętle + `Int32List(count)` 40 µs | 4.6× |
+| suma 10k | `fold()` 34 µs | pętla `for` 22 µs | 1.5× |
 | histogram 10k wartości 0..999 | `Map<int,int>` 271 µs | `Int32List(1000)[v]++` 25 µs | 10.8× |
 | 200 linii tekstu | `s += '...'` 106 µs | `StringBuffer` 30 µs / bajty do `Uint8List` 10 µs | 3.6× / 10.5× |
 | składanie 16 fragmentów po 512 B (`onData`) | `List<int>.addAll` 193 µs; `Uint8List` nowa kopia per fragment 11.7 µs | `BytesBuilder(copy: false)` 1.9 µs; prealokowany bufor + `sublistView` 0.47 µs | 100× / 410× |
 | parsowanie żądania HTTP | `utf8.decode` + `split` + `Map` 3.7 µs | skan bajtowy, offsety 0.93 µs | 4× |
 
-Uwaga do „nowa kopia per fragment”: tak robi `_Conn.onData` w `dart-rawsocket-C-Hatton` (`nb = Uint8List(buf.length + data.length)`). Działa, bo żądania są małe i zwykle przychodzą w jednym pakiecie; dla dużych body to O(n²).
+#### 1.7.1 Łańcuchy `Iterable` → pętla
+
+```dart
+// 🐢 — 2 leniwe Iterable, 2 iteratory, 2 closure'y, growable lista z realokacjami
+final r = data.where((v) => v.isEven).map((v) => v * 2).toList();
+
+// 🚀 — policz, zaalokuj raz, wypełnij
+var c = 0;
+for (var i = 0; i < data.length; i++) { if (data[i].isEven) c++; }
+final r = Int32List(c);
+var j = 0;
+for (var i = 0; i < data.length; i++) { final v = data[i]; if (v.isEven) r[j++] = v * 2; }
+```
+
+Pułapka leniwości: `final evens = data.where(...)` **nie** wykonuje pracy — każde `evens.length`, `evens.first`, `for (… in evens)` wykonuje filtr od nowa. Jeśli używasz wyniku więcej niż raz, zmaterializuj go (`toList(growable: false)`) albo napisz pętlę.
+
+```dart
+// 🐢 — filtr liczony 3 razy
+final big = items.where((i) => i.size > 1000);
+if (big.isNotEmpty) print('${big.length} items, first ${big.first}');
+// 🚀
+final big = items.where((i) => i.size > 1000).toList(growable: false);
+```
+
+#### 1.7.2 `fold`/`reduce` → pętla; `forEach` → `for`
+
+```dart
+// 🐢  final sum = data.fold<int>(0, (a, b) => a + b);     // closure call per element (AOT nie zawsze inline'uje)
+// 🚀  var sum = 0; for (var i = 0; i < data.length; i++) { sum += data[i]; }
+// 🐢  list.forEach((e) => process(e));                   // closure + brak break/continue
+// 🚀  for (final e in list) { process(e); }
+```
+
+#### 1.7.3 Mapy i zbiory → tablice, gdy klucz jest małą liczbą
+
+```dart
+// 🐢  final hist = <int, int>{}; for (final v in data) { hist[v] = (hist[v] ?? 0) + 1; }   // hash, boxing wartości, rehash
+// 🚀  final hist = Int32List(1000); for (var i = 0; i < data.length; i++) { hist[data[i]]++; }
+
+// 🐢  final allowed = {3, 7, 42, 100};  if (allowed.contains(code)) ...              // Set<int>: hash per sprawdzenie
+// 🚀  final allowed = Uint8List(256)..[3] = 1..[7] = 1..[42] = 1..[100] = 1;  if (allowed[code] != 0) ...   // 1 load
+// 🚀  (klucze duże/rzadkie) posortowany Int32List + wyszukiwanie binarne zamiast Set
+
+// 🐢  switch (name) { case 'GET': ... case 'POST': ... }        // porównania Stringów
+// 🚀  switch (methodCode) { case 0: ... case 1: ... }            // int ustalony raz przy parsowaniu (np. pierwszy bajt | długość)
+```
+
+`Map<String, T>` z kluczami znanymi w czasie kompilacji → `enum` + `List<T>` indeksowany `e.index` (zero hashowania).
+
+#### 1.7.4 Stringi
+
+```dart
+// 🐢 — kwadratowe kopiowanie: każdy += tworzy nowy String z całą dotychczasową treścią
+var s = ''; for (var i = 0; i < n; i++) { s += 'line $i\n'; }
+// 🚀 — amortyzowane O(n)
+final sb = StringBuffer(); for (var i = 0; i < n; i++) { sb..write('line ')..write(i)..write('\n'); }
+// 🚀🚀 — gdy wynik idzie do socketu/pliku: bajty od razu, bez Stringa pośredniego
+var k = 0; for (var i = 0; i < n; i++) { k = writeAscii(buf, k, 'line '); k = writeInt(buf, k, i); buf[k++] = 0x0a; }
+
+// 🐢  final parts = line.split(',');  final a = parts[0]; final b = parts[1];   // N Stringów + lista
+// 🚀  final comma = line.indexOf(','); final a = line.substring(0, comma); ...   // tylko potrzebne substringi
+// 🚀🚀 pracuj na offsetach (start, end) do oryginału; substring tylko na końcu, jeśli w ogóle
+
+// 🐢  if (header.toLowerCase() == 'content-length')               // alokuje nowy String
+// 🚀  if (header.length == 14 && _ieq(header, 'content-length'))   // porównanie po (c | 0x20), zero alokacji
+
+// 🐢  utf8.decode(bytes)                 // zawsze pełny dekoder
+// 🚀  isAscii(bytes) ? String.fromCharCodes(bytes) : utf8.decode(bytes)   // FlatBuffers `asciiOptimization`, Isar `is_ascii`
+```
+
+`String.substring` w Dart VM **kopiuje** (nie ma sliced strings jak w V8). Parsery utrzymują `(start, end)` i dekodują leniwie.
+
+#### 1.7.5 Składanie fragmentów ze strumienia bajtów
+
+```dart
+// 🐢 a) List<int> + addAll: boxing każdego bajtu do Smi w tablicy wskaźników
+final acc = <int>[]; stream.listen(acc.addAll);
+// 🐢 b) Uint8List + kopia przy każdym fragmencie (dart-rawsocket-C-Hatton): O(n²) dla dużych body
+var buf = Uint8List(0);
+void onData(Uint8List d) { final nb = Uint8List(buf.length + d.length); nb.setRange(0, buf.length, buf); nb.setRange(buf.length, nb.length, d); buf = nb; }
+// 🚀 c) BytesBuilder(copy: false): trzyma listę fragmentów, jedna kopia w takeBytes()
+final bb = BytesBuilder(copy: false); stream.listen(bb.add, onDone: () => handle(bb.takeBytes()));
+// 🚀🚀 d) prealokowany bufor per połączenie + licznik; widok bez kopii; memmove resztki po sparsowaniu ramki
+final buf = Uint8List(64 * 1024); var n = 0;
+void onData(Uint8List d) {
+  buf.setRange(n, n + d.length, d); n += d.length;
+  final used = parse(Uint8List.sublistView(buf, 0, n));          // zwraca liczbę skonsumowanych bajtów
+  if (used > 0) { buf.setRange(0, n - used, buf, used); n -= used; }   // przesuń ogon na początek (w miejscu)
+}
+```
+
+#### 1.7.6 Parsowanie protokołu po bajtach (wyciąg z `_parseBytes`)
+
+```dart
+// 🐢
+final text = utf8.decode(bytes);
+final lines = text.split('\r\n');
+final headers = <String, String>{};
+for (final line in lines.skip(1)) { final i = line.indexOf(':'); if (i > 0) headers[line.substring(0, i).toLowerCase()] = line.substring(i + 1).trim(); }
+final auth = headers['authorization'];
+
+// 🚀 — bez Stringów: nazwa nagłówka rozpoznawana po długości + pierwszym bajcie + porównaniu case-insensitive
+bool _ieq(Uint8List b, int s, String name) {
+  for (var k = 0; k < name.length; k++) { if ((b[s + k] | 0x20) != name.codeUnitAt(k)) return false; }
+  return true;
+}
+// ... w pętli po liniach, mając ls (start linii), c (pozycja ':'), vs/ve (wartość):
+final nameLen = c - ls; final f = b[ls] | 0x20;
+if (nameLen == 14 && f == 0x63 && _ieq(b, ls, 'content-length')) { contentLength = _parseIntBytes(b, vs, ve); }
+else if (nameLen == 13 && f == 0x61 && _ieq(b, ls, 'authorization')) { authStart = vs; authEnd = ve; }   // tylko offsety
+```
+
+#### 1.7.7 Drobiazgi, które w pętli przestają być drobiazgami
+
+```dart
+// 🐢  RegExp(r'^\d+$').hasMatch(s)            // kompilacja regexa per wywołanie
+// 🚀  static final _digits = RegExp(r'^\d+$'); // raz; albo pętla po codeUnitAt (jak _parseId w Dart submission)
+
+// 🐢  DateTime.now().millisecondsSinceEpoch      // alokuje DateTime
+// 🚀  final sw = Stopwatch()..start(); ... sw.elapsedMicroseconds   // brak alokacji; dla "czasu ściennego" cache'uj co klatkę/ms
+
+// 🐢  log('value=$x for $user');               // interpolacja ZAWSZE się wykonuje, nawet gdy log wyłączony
+// 🚀  if (log.isLoggable(Level.FINE)) log.fine('value=$x for $user');
+
+// 🐢  final copy = [...list];  /  List.from(list)      // growable + ewentualne sprawdzanie typów
+// 🚀  final copy = List.of(list, growable: false);     // jedna alokacja dokładnego rozmiaru; typed: Float64List.fromList / sublist
+
+// 🐢  enum Op { add, sub }  final cost = {Op.add: 1, Op.sub: 2}[op]!;
+// 🚀  const costs = [1, 2];  final cost = costs[op.index];
+
+// 🐢  x.toString()  w gorącej pętli (int -> String -> bajty)
+// 🚀  writeInt(buf, k, x)  — cyfry od końca prosto do Uint8List (zob. ByteWriter.integer)
+
+// 🐢  final cb = () => handle(this, item);      // closure przechwytująca this i item, alokowana per iteracja
+// 🚀  metoda instancji / funkcja top-level przekazana jako tear-off (ObjectBox: "Static callback to avoid over-capturing")
+```
 
 ---
 
@@ -527,6 +695,48 @@ ObjectBox (`native/query/query.dart`, strumieniowanie wyników) robi dokładnie 
 * **`Pointer<T>`** przesyłasz jako adres (`ptr.address`, int) — pamięć natywna jest wspólna dla całego procesu; to jest „shared memory” w Darcie. Odpowiedzialność za życie bufora po Twojej stronie.
 * **`Isolate.run`** (Dart 2.19+) przenosi wynik bez kopii, jeśli izolat kończy się tuż po — VM „przeszczepia” obiekty do odbiorcy (dla dużych wyników to wygrana nad `compute`).
 
+* **`Isolate.exit(port, message)`** — najtańszy sposób oddania dużego wyniku: izolat kończy się i *przekazuje* swoją stertę razem z obiektem (bez serializacji), więc nawet `List<Map>` wraca w O(1). To właśnie robi `Isolate.run` pod spodem.
+
+```dart
+// worker uruchomiony przez Isolate.spawn(_work, replyPort)
+void _work(SendPort reply) {
+  final result = parseEverything();           // dowolny graf obiektów, nawet 100 MB
+  Isolate.exit(reply, result);                // zero kopii; izolat umiera, obiekty "przeprowadzają się" do odbiorcy
+}
+```
+
+Długożyjący worker (gdy zadań jest wiele, a spawn per zadanie kosztowałby 0.1–0.35 ms każde) — wzór z `benchmarks/lib/src/bench_isolates.dart`:
+
+```dart
+late SendPort _worker;
+late StreamIterator<Object?> _replies;
+
+void _workerMain(SendPort reply) {
+  final port = ReceivePort();
+  reply.send(port.sendPort);                   // handshake: oddaj swój SendPort
+  port.listen((msg) {
+    if (msg is TransferableTypedData) { reply.send(process(msg.materialize().asUint8List())); }
+    else if (msg == null) { port.close(); }   // sygnał zakończenia; brak otwartych portów = izolat kończy się sam
+  });
+}
+
+Future<void> start() async {
+  final inbox = ReceivePort();
+  await Isolate.spawn(_workerMain, inbox.sendPort);
+  _replies = StreamIterator(inbox);
+  await _replies.moveNext();
+  _worker = _replies.current as SendPort;
+}
+
+Future<Object?> submit(Uint8List payload) async {   // żądania w kolejności: jedno w locie na raz
+  _worker.send(TransferableTypedData.fromList([payload]));
+  await _replies.moveNext();
+  return _replies.current;
+}
+```
+
+Jeśli potrzebujesz wielu zadań w locie, dodaj do wiadomości `id` i trzymaj `Map<int, Completer>` — ale wtedy payload odpowiedzi też powinien być płaski (`Uint8List` z `id` w pierwszych 4 bajtach), inaczej wracasz do deep copy.
+
 ### 3.3 Architektura serwerowa: izolaty i grupy izolatów
 
 TechEmpower `dart3/dart_aot/bin/server.dart` — jedyny tam niebanalny trik:
@@ -636,6 +846,64 @@ class ParticlePainter extends CustomPainter {
 * `CustomPainter(repaint: animation)` — painter nasłuchuje `Listenable` i oznacza *tylko* `RenderCustomPaint` do przerysowania; nie ma `setState`, nie ma rebuildu widgetów.
 * Dla pełnej kontroli: własny `LeafRenderObjectWidget` + `RenderBox` z `markNeedsPaint()` — layout liczony raz (`sizedByParent = true`, `computeDryLayout`), paint co klatkę, stan w typed data. To jest najniższa warstwa, w której wciąż jesteś w Darcie.
 
+Kompletny `RenderBox` sterowany `Ticker`-em (bez `setState`, bez rebuildu, layout raz):
+
+```dart
+class ParticlesWidget extends LeafRenderObjectWidget {
+  const ParticlesWidget(this.store, {super.key});
+  final ParticleStore store;                                   // Float32List xy + Float32List v, aktualizowany w miejscu
+  @override RenderObject createRenderObject(BuildContext context) => _RenderParticles(store);
+  @override void updateRenderObject(BuildContext context, _RenderParticles r) => r.store = store;
+}
+
+class _RenderParticles extends RenderBox {
+  // Produkcyjnie: przekaż `vsync` z SingleTickerProviderStateMixin, by respektować TickerMode (pauza poza ekranem).
+  _RenderParticles(this._store) { _ticker = Ticker(_tick)..start(); }
+  ParticleStore _store; late final Ticker _ticker; Duration _last = Duration.zero;
+  static final _paint = Paint()..strokeWidth = 2..strokeCap = StrokeCap.round..color = const Color(0xFFFFFFFF);
+
+  set store(ParticleStore s) { if (!identical(s, _store)) { _store = s; markNeedsPaint(); } }
+
+  void _tick(Duration now) {
+    final dt = (now - _last).inMicroseconds / 1e6; _last = now;
+    _store.step(dt, size);                                     // czysta pętla po Float32List, zero alokacji
+    markNeedsPaint();                                          // tylko paint; layout nietknięty
+  }
+
+  @override bool get sizedByParent => true;                    // layout: rozmiar od rodzica, liczony raz
+  @override Size computeDryLayout(BoxConstraints c) => c.biggest;
+  @override bool get isRepaintBoundary => true;                // własna warstwa: nie przerysowuje rodzeństwa
+  @override void paint(PaintingContext ctx, Offset offset) {
+    ctx.canvas..save()..translate(offset.dx, offset.dy)
+      ..drawRawPoints(PointMode.points, _store.xy, _paint)     // 1 wywołanie dla N cząstek
+      ..restore();
+  }
+  @override void detach() { _ticker.stop(); super.detach(); }
+  @override void attach(PipelineOwner owner) { super.attach(owner); if (!_ticker.isActive) _ticker.start(); }
+  @override void dispose() { _ticker.dispose(); super.dispose(); }
+}
+```
+
+Sprite'y: `drawRawAtlas` rysuje tysiące fragmentów jednej tekstury jednym wywołaniem, a transformacje podajesz jako `Float32List` RSTransform (scos, ssin, tx, ty) — idealne pod SoA:
+
+```dart
+final rst = Float32List(n * 4);   // [scos, ssin, tx, ty] per sprite — aktualizowane w miejscu co klatkę
+final rects = Float32List(n * 4); // [left, top, right, bottom] w atlasie — stałe
+// w paint():
+canvas.drawRawAtlas(atlasImage, rst, rects, null /* colors */, null /* blendMode */, null /* cullRect */, _paint);
+// obrót + skala sprite'a i bez alokacji: rst[i*4] = s*cos(a); rst[i*4+1] = s*sin(a); rst[i*4+2] = x - ...; rst[i*4+3] = y - ...;
+```
+
+Tekst w `CustomPainter`: `TextPainter.layout()` jest kosztowny; trzymaj painter per napis i przelicz tylko przy zmianie treści lub szerokości:
+
+```dart
+// 🐢 — w paint(): TextPainter(text: TextSpan(text: label))..layout()..paint(canvas, p)   // per klatka
+// 🚀
+final _labels = <String, TextPainter>{};
+TextPainter _label(String s) => _labels.putIfAbsent(s, () => TextPainter(text: TextSpan(text: s, style: _style), textDirection: TextDirection.ltr)..layout());
+// w paint(): _label('FPS 120').paint(canvas, offset);           // layout policzony raz
+```
+
 ### 4.4 Animacje: `Ticker` zamiast `setState` per klatka
 
 🐢 `AnimationController` + `addListener(() => setState(() {}))` na szczycie ekranu: rebuild całego drzewa 120×/s.
@@ -737,6 +1005,47 @@ final models = await compute(parseJsonToModels, jsonString);   // String kopiowa
 // 🚀
 final ttd = await Isolate.run(() => TransferableTypedData.fromList([parseToColumnarBytes(bytes)]));
 final table = ColumnarTable(ttd.materialize());               // widoki Float64List/Int32List na jednym buforze
+```
+
+**Stan listy w Flutterze (10k wierszy, filtr przy każdym naciśnięciu klawisza)**
+
+```dart
+// 🐢 — nowa lista + nowe widgety + rebuild całego ekranu przy każdym znaku
+setState(() => visible = all.where((p) => p.name.contains(query)).toList());
+
+// 🚀 — indeksy w Int32List, rebuild tylko listy przez ValueNotifier, widgety z const konstruktorami
+final visibleIdx = ValueNotifier<Int32List>(Int32List(0));
+void filter(String q) {
+  var c = 0; for (var i = 0; i < all.length; i++) { if (all[i].name.contains(q)) c++; }
+  final idx = Int32List(c); var j = 0;
+  for (var i = 0; i < all.length; i++) { if (all[i].name.contains(q)) idx[j++] = i; }
+  visibleIdx.value = idx;                                      // tylko ValueListenableBuilder wokół ListView.builder się odbuduje
+}
+```
+
+**Strumień zdarzeń (sensory, websocket) → wykres**
+
+```dart
+// 🐢
+stream.map((e) => Sample(e.t, e.v)).listen((s) => setState(() => samples.add(s)));   // obiekt per próbka, rebuild per próbka, lista rośnie bez końca
+// 🚀 — bufor cykliczny w Float64List, repaint przez Listenable, bez rebuildu
+class FrameTick extends ChangeNotifier { void fire() => notifyListeners(); }
+final ring = Float64List(4096); var head = 0; final tick = FrameTick();
+stream.listen((e) { ring[head] = e.v; head = (head + 1) & 4095; });
+Ticker((_) => tick.fire()).start();                            // 1 repaint per klatka, niezależnie od liczby próbek
+// CustomPainter(repaint: tick) rysuje `ring` przez drawRawPoints / Path budowany raz na klatkę
+```
+
+**Serializacja do pliku/cache (np. zapis 50k rekordów)**
+
+```dart
+// 🐢
+await File(p).writeAsString(jsonEncode(records.map((r) => r.toJson()).toList()));    // 50k Map + jeden String 10 MB + utf8
+// 🚀 — format binarny ze stałym rekordem: ByteData, jeden zapis, odczyt widokami bez parsowania
+final bd = ByteData(records.length * 16);
+for (var i = 0; i < records.length; i++) { bd.setInt32(i * 16, records[i].id, Endian.little); bd.setFloat64(i * 16 + 4, records[i].score, Endian.little); }
+await File(p).writeAsBytes(bd.buffer.asUint8List(), flush: true);
+// odczyt: final bd = ByteData.sublistView(await File(p).readAsBytes()); id(i) => bd.getInt32(i*16, Endian.little);  — zero parsowania, zero obiektów
 ```
 
 ### 5.3 Jak mierzyć (repo `benchmarks/`)

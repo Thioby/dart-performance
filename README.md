@@ -1,3 +1,5 @@
+> 🇵🇱 Wersja polska · [🇬🇧 English version](README.en.md)
+
 # dart-performance
 
 Warsztat „Jak pisać ekstremalnie szybki kod” — dwa przewodniki (Rust i Dart/Flutter), zestaw skilli Claude Code do optymalizacji wydajności w Dart/Flutter oraz pakiet benchmarków „wolny vs szybki”, na którym każdą technikę można zmierzyć (JIT i AOT).
