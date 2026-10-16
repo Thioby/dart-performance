@@ -1,3 +1,5 @@
+> 🇵🇱 Wersja polska · [🇬🇧 English version](README.en.md)
+
 # flutter_bench — „10k użytkowników z JSON” na urządzeniu
 
 Ta sama logika co w CLI (`packages/users_pipeline`), uruchamiana w aplikacji Flutter z licznikiem janku. Pozwala zobaczyć nie tylko *ile ms* trwa wariant, ale *co robi z UI*: podczas pomiaru kręci się ikona na wątku UI, a tabela zlicza klatki powyżej 16.7 ms.

@@ -31,6 +31,8 @@ AOT: `dart build cli -o build/aot` (pakiet `sqlite3` ≥ 3 ma build hooks; `dart
 | `sqlite` | `lib/src/bench_sqlite.dart` | 10k INSERT: autocommit vs prepared vs paczki vs jedna transakcja; `select()` vs `selectCursor()` vs `stmt.raw`; TEXT→String vs `CAST AS BLOB`+`columnBlobInto` |
 | `isolates` | `lib/src/bench_isolates.dart` | `SendPort` z `List<Map>` vs `Uint8List` vs `TransferableTypedData` (120 KB i 16 MB); koszt `Isolate.run` |
 
+Nazwy suite'ów i wariantów drukowane przez runner (i używane w `RESULTS.md`) są po angielsku; kod benchmarków ma angielskie komentarze.
+
 ## Harness (`lib/harness.dart`)
 
 - rozgrzewka 100 ms, iteracje dobrane na ~`sampleMillis` (300 ms), `samples` (7) prób, raportowana **mediana** + min/max,

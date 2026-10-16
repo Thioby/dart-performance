@@ -1,3 +1,5 @@
+> 🇵🇱 Wersja polska · [🇬🇧 English version](README.en.md)
+
 # users_pipeline — realistyczny benchmark: 10k użytkowników z JSON
 
 Scenariusz jak w prawdziwej aplikacji: pobierz listę 10 000 użytkowników jako JSON (3.3 MB), zdekoduj, odfiltruj aktywnych premium z PL w wieku 25–45 ze score ≥ 40 założonych po 2021, posortuj po score, weź top 100, policz aktywnych per kraj i zakoduj wynik do JSON. Najpierw „jak każdy”, potem w trzech stopniach optymalizacji.

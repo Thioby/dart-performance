@@ -445,7 +445,7 @@ const _leafFunctions = <String>{
 
 **Zero-copy z C do Darta.** `Pointer<Uint8>.asTypedList(n)` tworzy `Uint8List` będący **widokiem** na pamięć natywną (external typed data) — bez kopii:
 
-| `ffi/read 4 KB z Pointer<Uint8>` | AOT |
+| `ffi/read 4 KB from Pointer<Uint8>` | AOT |
 |---|---:|
 | `ptr[i]` w pętli do `List<int>` | 10 580 ns |
 | `Uint8List.fromList(ptr.asTypedList(n))` (1 memcpy) | 710 ns |
@@ -551,7 +551,7 @@ void _readTextAsBlobInto() {                  // SELECT ..., CAST(body AS BLOB) 
 }
 ```
 
-| `sqlite/select 10k wierszy` | AOT |
+| `sqlite/select 10k rows` | AOT |
 |---|---:|
 | `select()` → `ResultSet` | 4.16 ms |
 | `selectCursor()` | 4.48 ms |

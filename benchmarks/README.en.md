@@ -37,7 +37,7 @@ AOT: `dart build cli -o build/aot` (package `sqlite3` ≥ 3 has build hooks; `da
 - `blackHole(value)` with `@pragma('vm:never-inline')` protects results from dead-code elimination,
 - `toMarkdown(results)` generates the tables for `RESULTS.md`, `BenchResult.toJson()` the raw data.
 
-Suite names printed by the runner (and used in `RESULTS.md`) are in Polish, e.g. `soa/particles (10k cząstek, 1 klatka)` = "10k particles, 1 frame"; the variant names map 1:1 to the rows in the English guide.
+Suite and variant names printed by the runner (and used in `RESULTS.md`) are in English; the Polish guide quotes them verbatim.
 
 ## Adding a benchmark
 
