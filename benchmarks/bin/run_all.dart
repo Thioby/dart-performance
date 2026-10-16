@@ -1,10 +1,10 @@
-/// Uruchamia wszystkie benchmarki.
+/// Runs all benchmarks.
 ///
 ///   dart run bin/run_all.dart                 # JIT
-///   dart run bin/run_all.dart --only json,ffi # wybrane grupy
-///   dart run bin/run_all.dart --json out.json # surowe wyniki
-///   dart run bin/run_all.dart --md RESULTS.md # tabela Markdown
-///   tool/run.sh                               # JIT + AOT, zapis do RESULTS.md
+///   dart run bin/run_all.dart --only json,ffi # selected groups
+///   dart run bin/run_all.dart --json out.json # raw results
+///   dart run bin/run_all.dart --md RESULTS.md # Markdown table
+///   tool/run.sh                               # JIT + AOT, written to RESULTS.md
 library;
 
 import 'dart:convert';
@@ -43,7 +43,7 @@ Future<void> main(List<String> args) async {
       case '--only':
         only = args[++i].split(',').toSet();
       default:
-        stderr.writeln('nieznany argument: ${args[i]}');
+        stderr.writeln('unknown argument: ${args[i]}');
         exit(2);
     }
   }
@@ -51,7 +51,7 @@ Future<void> main(List<String> args) async {
 
   final mode = Platform.script.path.endsWith('.dart') ? 'JIT' : 'AOT';
   stdout.writeln('Dart ${Platform.version}');
-  stdout.writeln('tryb: $mode, ${Platform.numberOfProcessors} CPU, '
+  stdout.writeln('mode: $mode, ${Platform.numberOfProcessors} CPU, '
       '${Platform.operatingSystem}');
 
   final all = <BenchResult>[];
@@ -87,13 +87,13 @@ Future<void> main(List<String> args) async {
       'mode': mode,
       'results': all.map((r) => r.toJson()).toList(),
     }));
-    stdout.writeln('zapisano $jsonOut');
+    stdout.writeln('wrote $jsonOut');
   }
   if (mdOut != null) {
     File(mdOut).writeAsStringSync(
-        '# Wyniki ($mode, Dart ${Platform.version.split(' ').first})\n'
+        '# Results ($mode, Dart ${Platform.version.split(' ').first})\n'
         '${toMarkdown(all)}');
-    stdout.writeln('zapisano $mdOut');
+    stdout.writeln('wrote $mdOut');
   }
   exit(0);
 }

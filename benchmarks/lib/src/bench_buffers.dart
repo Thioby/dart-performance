@@ -1,15 +1,16 @@
-/// Sekcja 1 i 3 przewodnika: zarządzanie buforami bajtowymi i parsowanie HTTP.
+/// Guide sections 1 and 3: byte buffer management and HTTP parsing.
 ///
-/// 1. Składanie przychodzących fragmentów (`Socket.listen(onData)`):
+/// 1. Assembling incoming chunks (`Socket.listen(onData)`):
 ///    * `List<int>` + `addAll` (boxing / growable),
-///    * `Uint8List` + kopia przy każdym fragmencie (tak robi
-///      `dart-rawsocket-C-Hatton`: `nb = Uint8List(buf.length + data.length)`),
-///    * `BytesBuilder(copy: false)` (lista fragmentów, jedna kopia na końcu),
-///    * reużywalny, prealokowany `Uint8List` + licznik (zero alokacji).
-/// 2. Parsowanie nagłówków HTTP:
-///    * idiomatycznie: `utf8.decode` + `split('\r\n')` + `split(':')` + `Map`,
-///    * bajtowo: skan po `Uint8List`, tylko 3 potrzebne nagłówki, bez Stringów
-///      poza wartością Authorization (wzorzec z `_parseHead` w Dart submission).
+///    * `Uint8List` + a copy on every chunk (this is what
+///      `dart-rawsocket-C-Hatton` does: `nb = Uint8List(buf.length + data.length)`),
+///    * `BytesBuilder(copy: false)` (a list of chunks, one copy at the end),
+///    * a reusable, preallocated `Uint8List` + counter (zero allocations).
+/// 2. Parsing HTTP headers:
+///    * idiomatically: `utf8.decode` + `split('\r\n')` + `split(':')` + `Map`,
+///    * byte-wise: a scan over `Uint8List`, only the 3 headers we need, no
+///      Strings except the Authorization value (pattern from `_parseHead` in
+///      the Dart submission).
 library;
 
 import 'dart:convert';
@@ -31,7 +32,7 @@ final Uint8List _request = Uint8List.fromList(utf8.encode(
   '\r\n',
 ));
 
-// ---------- 1. składanie fragmentów ----------
+// ---------- 1. assembling chunks ----------
 
 const _chunk = 512;
 final List<Uint8List> _chunks = [
@@ -73,10 +74,10 @@ Uint8List _assemblePooled() {
     _pooled.setRange(n, n + c.length, c);
     n += c.length;
   }
-  return Uint8List.sublistView(_pooled, 0, n); // widok, bez kopii
+  return Uint8List.sublistView(_pooled, 0, n); // a view, no copy
 }
 
-// ---------- 2. parsowanie HTTP ----------
+// ---------- 2. HTTP parsing ----------
 
 class ParsedString {
   final String method;
@@ -100,8 +101,8 @@ ParsedString _parseIdiomatic(Uint8List bytes) {
   return ParsedString(first[0], first[1], headers);
 }
 
-/// Wynik parsowania bez Map i bez Stringów dla metody/ścieżki:
-/// tylko offsety do bufora. Reużywany obiekt => zero alokacji.
+/// Parse result with no Map and no Strings for the method/path:
+/// only offsets into the buffer. A reused object => zero allocations.
 class ParsedBytes {
   int methodStart = 0, methodEnd = 0;
   int pathStart = 0, pathEnd = 0;
@@ -192,19 +193,18 @@ ParsedBytes? _parseBytes(Uint8List b, ParsedBytes out) {
 }
 
 List<Suite> suites() {
-  final asm = Suite('buffers/assemble 16x512B fragmentów')
+  final asm = Suite('buffers/assemble 16x512B chunks')
     ..add('List<int> addAll (boxing)', () => blackHole(_assembleListInt()))
-    ..add('Uint8List: nowa kopia na fragment',
-        () => blackHole(_assembleCopyEach()))
+    ..add('Uint8List: new copy per chunk', () => blackHole(_assembleCopyEach()))
     ..add('BytesBuilder(copy:false).takeBytes()',
         () => blackHole(_assembleBytesBuilder()))
-    ..add('prealokowany Uint8List + sublistView (zero-copy)',
+    ..add('preallocated Uint8List + sublistView (zero-copy)',
         () => blackHole(_assemblePooled()));
 
-  final http = Suite('http/parse request (~430 B, 8 nagłówków)')
+  final http = Suite('http/parse request (~430 B, 8 headers)')
     ..add('utf8.decode + split + Map<String,String>',
         () => blackHole(_parseIdiomatic(_request)))
-    ..add('skan bajtowy, offsety, 3 nagłówki (zero-alloc)',
+    ..add('byte scan, offsets, 3 headers (zero-alloc)',
         () => blackHole(_parseBytes(_request, _parsed)));
 
   return [asm, http];

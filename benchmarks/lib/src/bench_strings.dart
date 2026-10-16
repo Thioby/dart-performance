@@ -1,11 +1,12 @@
-/// Sekcja 1 przewodnika: budowanie tekstu i konwersje.
+/// Guide section 1: building text and conversions.
 ///
-///  * `+=` na String: O(n^2) kopiowania, każda konkatenacja to nowy String.
-///  * `StringBuffer`: amortyzowane O(n), jeden String na końcu.
-///  * Interpolacja: kompilator robi z niej jedno `String._interpolate`
-///    (szybsza niż `+`, nadal alokuje).
-///  * Bajty: pisanie `codeUnitAt` do `Uint8List` omija obiekt String zupełnie;
-///    gdy wynik idzie do socketu/pliku, to właściwy format końcowy.
+///  * `+=` on String: O(n^2) copying, every concatenation is a new String.
+///  * `StringBuffer`: amortized O(n), one String at the end.
+///  * Interpolation: the compiler turns it into a single `String._interpolate`
+///    (faster than `+`, still allocates).
+///  * Bytes: writing `codeUnitAt` into a `Uint8List` skips the String object
+///    entirely; when the result goes to a socket/file, that is the final
+///    format anyway.
 library;
 
 import 'dart:convert';
@@ -80,12 +81,12 @@ Uint8List _bytesDirect() {
 }
 
 List<Suite> suites() {
-  final s = Suite('strings/build 200 linii')
-    ..add('String += (kwadratowe kopiowanie)', () => blackHole(_concat()))
+  final s = Suite('strings/build 200 lines')
+    ..add('String += (quadratic copying)', () => blackHole(_concat()))
     ..add('StringBuffer.write', () => blackHole(_stringBuffer()))
-    ..add('StringBuffer + utf8.encode (do socketu)',
+    ..add('StringBuffer + utf8.encode (to socket)',
         () => blackHole(_stringBufferToUtf8()))
-    ..add('bajty prosto do reużywanego Uint8List',
+    ..add('bytes straight into a reused Uint8List',
         () => blackHole(_bytesDirect()));
   return [s];
 }

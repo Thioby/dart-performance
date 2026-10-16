@@ -1,14 +1,14 @@
-/// Sekcja 2 przewodnika: `dart:ffi` z minimalnym narzutem.
+/// Guide section 2: `dart:ffi` with minimal overhead.
 ///
-/// Każde wywołanie FFI "non-leaf" przełącza stan wątku VM (Dart -> native
-/// transition: zapis stanu, możliwość safepointu dla GC) i wraca.
-/// `isLeaf: true` mówi VM: "ta funkcja C jest krótka, nie woła z powrotem do
-/// Darta, nie blokuje" — VM pomija przejście stanu wątku, co dla funkcji
-/// trwających nanosekundy daje kilkukrotne przyspieszenie.
+/// Every "non-leaf" FFI call switches the VM thread state (Dart -> native
+/// transition: saving state, a possible GC safepoint) and back.
+/// `isLeaf: true` tells the VM: "this C function is short, does not call back
+/// into Dart, does not block" — the VM skips the thread state transition,
+/// which for functions taking nanoseconds yields a severalfold speedup.
 ///
-/// `Pointer<Double>.asTypedList(n)` tworzy `Float64List` będący widokiem na
-/// pamięć natywną bez kopii; alternatywa (`List.generate` + `ptr[i]`) kopiuje
-/// i boksuje.
+/// `Pointer<Double>.asTypedList(n)` creates a `Float64List` that is a view
+/// over native memory with no copy; the alternative (`List.generate` +
+/// `ptr[i]`) copies and boxes.
 library;
 
 import 'dart:ffi';
@@ -43,7 +43,7 @@ late final Float64List _vb;
 bool setupFfi() {
   final path = '${Directory.current.path}/native/libfastmath.so';
   if (!File(path).existsSync()) {
-    stderr.writeln('[ffi] brak $path — uruchom tool/build_native.sh; pomijam');
+    stderr.writeln('[ffi] missing $path — run tool/build_native.sh; skipping');
     return false;
   }
   _lib = DynamicLibrary.open(path);
@@ -74,7 +74,7 @@ double _dotPureDart() {
   return s;
 }
 
-/// Kopiowanie z pamięci natywnej do Darta przez `ptr[i]` (wolno).
+/// Copying from native memory into Dart via `ptr[i]` (slow).
 List<int> _readCopyIndexed() {
   final out = List<int>.filled(4096, 0);
   for (var i = 0; i < 4096; i++) {
@@ -83,13 +83,13 @@ List<int> _readCopyIndexed() {
   return out;
 }
 
-/// Widok bez kopii.
+/// A view with no copy.
 Uint8List _readView() => _pbuf.asTypedList(4096);
 
-/// Kopia przez widok (gdy musimy mieć własny bufor): jedna memcpy.
+/// A copy via the view (when we need our own buffer): a single memcpy.
 Uint8List _readCopyView() => Uint8List.fromList(_pbuf.asTypedList(4096));
 
-/// Alokacja natywna per wywołanie vs Arena vs reużywany bufor.
+/// Native allocation per call vs Arena vs a reused buffer.
 int _mallocPerCall() {
   final p = malloc<Uint8>(256);
   final s = _fillLeaf(p, 256, 7);
@@ -108,28 +108,27 @@ int _reusedBuffer() => _fillLeaf(_pbuf, 256, 7);
 
 List<Suite> suites() {
   final call = Suite('ffi/call add(a,b)')
-    ..add('czysty Dart a+b (referencja)', () => blackHole(_addPureDart(3, 4)))
+    ..add('pure Dart a+b (reference)', () => blackHole(_addPureDart(3, 4)))
     ..add('FFI non-leaf', () => blackHole(_addNonLeaf(3, 4)))
     ..add('FFI isLeaf: true', () => blackHole(_addLeaf(3, 4)));
 
   final dot = Suite('ffi/dot product 1024 double')
-    ..add('czysty Dart na Float64List (widok asTypedList)',
+    ..add('pure Dart on Float64List (asTypedList view)',
         () => blackHole(_dotPureDart()))
-    ..add(
-        'C dot_f64 przez FFI isLeaf', () => blackHole(_dotLeaf(_pa, _pb, _n)));
+    ..add('C dot_f64 via FFI isLeaf', () => blackHole(_dotLeaf(_pa, _pb, _n)));
 
-  final read = Suite('ffi/read 4 KB z Pointer<Uint8>')
-    ..add('ptr[i] do List<int> (4096 wywołań)',
+  final read = Suite('ffi/read 4 KB from Pointer<Uint8>')
+    ..add('ptr[i] into List<int> (4096 calls)',
         () => blackHole(_readCopyIndexed()))
     ..add('Uint8List.fromList(asTypedList) (1 memcpy)',
         () => blackHole(_readCopyView()))
-    ..add('asTypedList widok (zero-copy)', () => blackHole(_readView()));
+    ..add('asTypedList view (zero-copy)', () => blackHole(_readView()));
 
-  final alloc = Suite('ffi/fill 256 B: alokacja natywna')
-    ..add('malloc + free per wywołanie', () => blackHole(_mallocPerCall()))
-    ..add('Arena (using) per wywołanie', () => blackHole(_arenaPerCall()))
-    ..add('reużywany bufor (zero-alloc)', () => blackHole(_reusedBuffer()))
-    ..add('reużywany bufor, non-leaf',
+  final alloc = Suite('ffi/fill 256 B: native allocation')
+    ..add('malloc + free per call', () => blackHole(_mallocPerCall()))
+    ..add('Arena (using) per call', () => blackHole(_arenaPerCall()))
+    ..add('reused buffer (zero-alloc)', () => blackHole(_reusedBuffer()))
+    ..add('reused buffer, non-leaf',
         () => blackHole(_fillNonLeaf(_pbuf, 256, 7)));
 
   return [call, dot, read, alloc];

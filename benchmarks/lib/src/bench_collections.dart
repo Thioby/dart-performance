@@ -1,10 +1,10 @@
-/// Sekcja 1 i 5 przewodnika: idiomatyczne łańcuchy kolekcji vs pętle.
+/// Guide sections 1 and 5: idiomatic collection chains vs loops.
 ///
-/// `list.where(...).map(...).toList()` tworzy 2 leniwe iterable, 2 iteratory,
-/// closure'y i rosnącą listę wynikową. Jedna pętla `for` z prealokowaną listą
-/// robi to samo bez obiektów pośrednich. Podobnie `fold`/`reduce` vs pętla,
-/// `List.from` vs `toList(growable:false)`, `Map` z kluczem String vs
-/// `Int32List` jako tablica przeglądowa.
+/// `list.where(...).map(...).toList()` creates 2 lazy iterables, 2 iterators,
+/// closures and a growing result list. A single `for` loop with a preallocated
+/// list does the same without intermediate objects. Likewise `fold`/`reduce`
+/// vs a loop, `List.from` vs `toList(growable:false)`, a `Map` keyed by String
+/// vs an `Int32List` as a lookup table.
 library;
 
 import 'dart:typed_data';
@@ -26,7 +26,7 @@ List<int> _loop() {
 }
 
 Int32List _loopTyped() {
-  // Dwa przebiegi: policz, potem wypełnij (brak realokacji, brak boxingu).
+  // Two passes: count, then fill (no reallocation, no boxing).
   var count = 0;
   for (var i = 0; i < _data.length; i++) {
     if (_data[i].isEven) count++;
@@ -50,7 +50,7 @@ int _loopSum() {
   return s;
 }
 
-// Zliczanie wystąpień: Map<int,int> vs Int32List jako histogram.
+// Counting occurrences: Map<int,int> vs Int32List as a histogram.
 Map<int, int> _histMap() {
   final m = <int, int>{};
   for (var i = 0; i < _data.length; i++) {
@@ -70,19 +70,18 @@ Int32List _histTyped() {
 List<Suite> suites() {
   final filter = Suite('collections/filter+map 10k')
     ..add('where().map().toList()', () => blackHole(_chain()))
-    ..add('pętla for + List.add', () => blackHole(_loop()))
-    ..add(
-        '2 pętle + Int32List (zero realokacji)', () => blackHole(_loopTyped()));
+    ..add('for loop + List.add', () => blackHole(_loop()))
+    ..add('2 loops + Int32List (zero reallocation)',
+        () => blackHole(_loopTyped()));
 
   final sum = Suite('collections/sum 10k')
     ..add('fold()', () => blackHole(_foldSum()))
     ..add('reduce()', () => blackHole(_reduceSum()))
-    ..add('pętla for', () => blackHole(_loopSum()));
+    ..add('for loop', () => blackHole(_loopSum()));
 
-  final hist = Suite('collections/histogram 10k wartości 0..999')
+  final hist = Suite('collections/histogram 10k values 0..999')
     ..add('Map<int,int>', () => blackHole(_histMap()))
-    ..add(
-        'Int32List[1000] jako tablica zliczeń', () => blackHole(_histTyped()));
+    ..add('Int32List[1000] as a count table', () => blackHole(_histTyped()));
 
   return [filter, sum, hist];
 }

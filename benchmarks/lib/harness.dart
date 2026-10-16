@@ -1,11 +1,11 @@
-/// Minimalny harness benchmarkowy w stylu `benchmark_harness`, ale z:
-///  * rozgrzewką (JIT potrzebuje jej, AOT nie, ale wyrównujemy warunki),
-///  * wieloma próbami i medianą (odporność na GC i szum systemu),
-///  * raportem ns/op oraz względnym przyspieszeniem "baseline vs optimized",
-///  * opcjonalnym pomiarem RSS i liczby bajtów zaalokowanych przez VM
-///    (`--observe` nie jest wymagane: używamy `dart:developer` + ProcessInfo).
+/// Minimal benchmark harness in the style of `benchmark_harness`, but with:
+///  * a warm-up (the JIT needs it, AOT does not, but we level the conditions),
+///  * multiple samples and a median (robust against GC and system noise),
+///  * a report of ns/op and the relative speedup "baseline vs optimized",
+///  * optional measurement of RSS and the number of bytes allocated by the VM
+///    (`--observe` is not required: we use `dart:developer` + ProcessInfo).
 ///
-/// Użycie:
+/// Usage:
 /// ```dart
 /// final suite = Suite('json');
 /// suite.add('jsonEncode + utf8.encode', () => ...);
@@ -60,10 +60,10 @@ class Suite {
   final String name;
   final List<_Case> _cases = [];
 
-  /// Minimalny czas jednej próby (ms). Większy = stabilniej, wolniej.
+  /// Minimum duration of a single sample (ms). Larger = more stable, slower.
   final int sampleMillis;
 
-  /// Liczba prób, z których bierzemy medianę.
+  /// Number of samples from which we take the median.
   final int samples;
 
   Suite(this.name, {this.sampleMillis = 300, this.samples = 7});
@@ -90,15 +90,15 @@ class Suite {
   }
 
   BenchResult _measure(_Case c) {
-    // Rozgrzewka: ~100 ms. Dla JIT-a to czas na optymalizację gorących funkcji;
-    // dla AOT wyrównuje stan cache/pamięci.
+    // Warm-up: ~100 ms. For the JIT this is time to optimize hot functions;
+    // for AOT it levels the cache/memory state.
     final warm = Stopwatch()..start();
     var warmIters = 0;
     while (warm.elapsedMilliseconds < 100) {
       c.fn();
       warmIters++;
     }
-    // Dobór liczby iteracji na próbę tak, by próba trwała ~sampleMillis.
+    // Choose iterations per sample so that one sample takes ~sampleMillis.
     final nsPerWarmOp =
         warm.elapsedMicroseconds * 1000 / math.max(1, warmIters);
     var iters = (sampleMillis * 1e6 / math.max(1, nsPerWarmOp)).round();
@@ -152,8 +152,8 @@ class Suite {
   }
 }
 
-/// Zapobiega wyeliminowaniu wyniku przez optymalizator (dead code elimination).
-/// Odpowiednik `std::hint::black_box` z Rusta.
+/// Prevents the optimizer from eliminating the result (dead code elimination).
+/// Equivalent of Rust's `std::hint::black_box`.
 @pragma('vm:never-inline')
 void blackHole(Object? value) {
   _sink = value;
@@ -161,10 +161,10 @@ void blackHole(Object? value) {
 
 Object? _sink;
 
-/// Pozwala odczytać wartość pochłoniętą przez [blackHole] (np. w testach).
+/// Lets you read the value swallowed by [blackHole] (e.g. in tests).
 Object? get lastBlackHoleValue => _sink;
 
-/// Wypisuje tabelę Markdown z wyników (do RESULTS.md).
+/// Prints a Markdown table of the results (for RESULTS.md).
 String toMarkdown(List<BenchResult> results) {
   final sb = StringBuffer();
   String? current;
@@ -176,7 +176,7 @@ String toMarkdown(List<BenchResult> results) {
       sb.writeln();
       sb.writeln('### ${r.suite}');
       sb.writeln();
-      sb.writeln('| Wariant | ns/op | ops/s | vs baseline |');
+      sb.writeln('| Variant | ns/op | ops/s | vs baseline |');
       sb.writeln('|---|---:|---:|---:|');
     }
     final speed = baseline!.nsPerOp / r.nsPerOp;

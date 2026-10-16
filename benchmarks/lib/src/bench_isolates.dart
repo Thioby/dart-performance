@@ -1,21 +1,22 @@
-/// Sekcja 3 przewodnika: koszt komunikacji między izolatami.
+/// Guide section 3: the cost of communication between isolates.
 ///
-/// `SendPort.send(obj)` kopiuje głęboko cały graf obiektów (poza niezmiennymi
-/// i kilkoma wyjątkami). Dla `List<Map<String, Object>>` z 10k elementów to
-/// dziesiątki tysięcy alokacji po stronie odbiorcy + przejście grafu po
-/// stronie nadawcy. Alternatywy:
-///  * wysłać `Uint8List` (jedna płaska kopia memcpy),
+/// `SendPort.send(obj)` deep-copies the whole object graph (except immutable
+/// objects and a few exceptions). For a `List<Map<String, Object>>` with 10k
+/// elements that is tens of thousands of allocations on the receiver side +
+/// a graph traversal on the sender side. Alternatives:
+///  * send a `Uint8List` (a single flat memcpy copy),
 ///  * `TransferableTypedData.fromList([...])` -> `materialize()`:
-///    przeniesienie własności bufora bez kopii (O(1)),
-///  * `Isolate.run` (Dart 2.19+): wynik funkcji jest *przenoszony*, nie
-///    kopiowany, jeśli to możliwe — ale sam spawn izolatu kosztuje ~ms.
+///    transfer of buffer ownership with no copy (O(1)),
+///  * `Isolate.run` (Dart 2.19+): the function result is *moved*, not
+///    copied, when possible — but spawning the isolate itself costs ~ms.
 ///
-/// Benchmark mierzy: główny izolat -> worker (pełny payload) -> ack (int).
+/// The benchmark measures: main isolate -> worker (full payload) -> ack (int).
 ///
-/// UWAGA: `TransferableTypedData.fromList` *kopiuje* dane do bufora
-/// natywnego (jedna memcpy po stronie nadawcy). Zero-copy jest sam transfer
-/// przez port i `materialize()` po stronie odbiorcy; odbiorca nie alokuje
-/// i jego GC nie widzi dużego obiektu, dopóki nie zmaterializuje.
+/// NOTE: `TransferableTypedData.fromList` *copies* the data into a native
+/// buffer (one memcpy on the sender side). Only the transfer itself through
+/// the port and `materialize()` on the receiver side are zero-copy; the
+/// receiver does not allocate and its GC does not see the large object until
+/// it materializes.
 library;
 
 import 'dart:async';
@@ -36,7 +37,7 @@ final List<Map<String, Object>> _objects = List.generate(
   },
 );
 
-// Te same dane spłaszczone: id (int32) + score (float64) per rekord.
+// The same data flattened: id (int32) + score (float64) per record.
 final Uint8List _flat = () {
   final bd = ByteData(_n * 12);
   for (var i = 0; i < _n; i++) {
@@ -54,8 +55,8 @@ void _workerMain(SendPort reply) {
   final port = ReceivePort();
   reply.send(port.sendPort);
   port.listen((msg) {
-    // Worker "konsumuje" dane i odsyła tylko mały ack (int), żeby mierzyć
-    // koszt JEDNEGO przesłania w stronę workera, nie dwóch.
+    // The worker "consumes" the data and sends back only a small ack (int),
+    // to measure the cost of ONE transfer towards the worker, not two.
     if (msg is TransferableTypedData) {
       reply.send(msg.materialize().lengthInBytes);
     } else if (msg is Uint8List) {
@@ -82,11 +83,11 @@ Future<Object?> _roundTrip(Object msg) async {
   return _replies.current;
 }
 
-/// Harness jest synchroniczny; tu mierzymy ręcznie N round-tripów async.
+/// The harness is synchronous; here we time N async round-trips by hand.
 Future<List<BenchResult>> runIsolateSuite() async {
   const reps = 20;
   Future<double> measure(Future<Object?> Function() f) async {
-    // rozgrzewka
+    // warm-up
     for (var i = 0; i < 5; i++) {
       await f();
     }
@@ -105,7 +106,7 @@ Future<List<BenchResult>> runIsolateSuite() async {
 
   final results = <BenchResult>[];
   BenchResult mk(String name, double ns) => BenchResult(
-        suite: 'isolates/round-trip 10k rekordów',
+        suite: 'isolates/round-trip 10k records',
         name: name,
         nsPerOp: ns,
         opsPerSec: 1e9 / ns,
@@ -115,22 +116,22 @@ Future<List<BenchResult>> runIsolateSuite() async {
       );
 
   final a = await measure(() => _roundTrip(_objects));
-  results.add(mk('List<Map> 10k obiektów (deep copy przez port)', a));
+  results.add(mk('List<Map> 10k objects (deep copy via port)', a));
   final b = await measure(() => _roundTrip(_flat));
-  results.add(mk('Uint8List 120 KB (kopia przez port)', b));
+  results.add(mk('Uint8List 120 KB (copy via port)', b));
   final c =
       await measure(() => _roundTrip(TransferableTypedData.fromList([_flat])));
-  results.add(mk('TransferableTypedData 120 KB (fromList kopia + move)', c));
-  // Przy dużych buforach kopia staje się kosztem dominującym, a przeniesienie
-  // własności pozostaje O(1): tu widać, gdzie TransferableTypedData się opłaca.
+  results.add(mk('TransferableTypedData 120 KB (fromList copy + move)', c));
+  // With large buffers the copy becomes the dominant cost, while transferring
+  // ownership stays O(1): this is where TransferableTypedData pays off.
   final big = Uint8List(16 << 20); // 16 MB
   final e = await measure(() => _roundTrip(big));
-  results.add(mk('Uint8List 16 MB (kopia przez port)', e));
+  results.add(mk('Uint8List 16 MB (copy via port)', e));
   final f =
       await measure(() => _roundTrip(TransferableTypedData.fromList([big])));
-  results.add(mk('TransferableTypedData 16 MB (fromList kopia + move)', f));
+  results.add(mk('TransferableTypedData 16 MB (fromList copy + move)', f));
   final d = await measure(() => Isolate.run(() => _n * 2));
-  results.add(mk('Isolate.run(() => trivial) — koszt spawn', d));
+  results.add(mk('Isolate.run(() => trivial) — spawn cost', d));
 
   print('');
   print('== ${results.first.suite} ==');

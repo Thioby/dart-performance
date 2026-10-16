@@ -1,18 +1,19 @@
-/// Sekcja 1 i 3 przewodnika: serializacja JSON.
+/// Guide sections 1 and 3: JSON serialization.
 ///
-/// Warianty od najwolniejszego do najszybszego:
-///  1. `jsonEncode(map)` + `utf8.encode(...)`: Map -> String (UTF-16) -> bajty.
-///     Dwie pełne kopie i tysiące obiektów pośrednich.
-///  2. `JsonUtf8Encoder().convert(map)`: fuzja "serializuj + koduj UTF-8" prosto
-///     do bufora bajtów; omija obiekt String.
-///  3. `JsonUtf8Encoder` na obiekcie z `toJson()` (nadal Map pośrednia).
-///  4. Ręczny writer bajtowy do reużywalnego `Uint8List` (wzorzec z
-///     `dart-rawsocket-C-Hatton` i zwycięskiego Rusta): zero alokacji w hot
-///     path, pola zapisywane bezpośrednio z surowych bajtów.
+/// Variants from slowest to fastest:
+///  1. `jsonEncode(map)` + `utf8.encode(...)`: Map -> String (UTF-16) -> bytes.
+///     Two full copies and thousands of intermediate objects.
+///  2. `JsonUtf8Encoder().convert(map)`: fuses "serialize + encode UTF-8"
+///     straight into a byte buffer; skips the String object.
+///  3. `JsonUtf8Encoder` on an object with `toJson()` (still an intermediate
+///     Map).
+///  4. A hand-written byte writer into a reusable `Uint8List` (pattern from
+///     `dart-rawsocket-C-Hatton` and the winning Rust entry): zero allocations
+///     in the hot path, fields written directly from raw bytes.
 ///
-/// Dekodowanie: `jsonDecode(utf8.decode(bytes))` vs
-/// `utf8.decoder.fuse(json.decoder).convert(bytes)` (jeden przebieg, bez
-/// pośredniego Stringa UTF-16 dla całego dokumentu).
+/// Decoding: `jsonDecode(utf8.decode(bytes))` vs
+/// `utf8.decoder.fuse(json.decoder).convert(bytes)` (a single pass, with no
+/// intermediate UTF-16 String for the whole document).
 library;
 
 import 'dart:convert';
@@ -48,8 +49,8 @@ final List<Post> _posts = List.generate(
   ),
 );
 
-// Te same dane jako surowe bajty UTF-8, tak jak przychodzą z SQLite
-// (`CAST(col AS BLOB)`) albo z sieci.
+// The same data as raw UTF-8 bytes, the way they arrive from SQLite
+// (`CAST(col AS BLOB)`) or from the network.
 final List<Uint8List> _bodyBytes =
     _posts.map((p) => Uint8List.fromList(utf8.encode(p.body))).toList();
 final List<Uint8List> _createdBytes =
@@ -72,8 +73,8 @@ Uint8List _encodeJsonUtf8Encoder() {
   return _utf8Encoder.convert(_feedMap()) as Uint8List;
 }
 
-/// Reużywalny bufor wyjściowy + ręczne pisanie bajtów (zero alokacji
-/// poza wynikową kopią o dokładnym rozmiarze).
+/// A reusable output buffer + manual byte writing (zero allocations
+/// except the final exact-size copy).
 class ByteWriter {
   Uint8List _buf = Uint8List(1 << 16);
   int _len = 0;
@@ -112,7 +113,7 @@ class ByteWriter {
       byte(0x2d);
       v = -v;
     }
-    // Zapis cyfr od końca do małego bufora na stosie, potem kopiujemy.
+    // Write the digits back-to-front into a small stack buffer, then copy.
     var tmp = 0;
     var digits = 0;
     while (v > 0) {
@@ -127,7 +128,7 @@ class ByteWriter {
     }
   }
 
-  /// JSON string z surowych bajtów UTF-8: escapujemy tylko `"`, `\` i < 0x20.
+  /// JSON string from raw UTF-8 bytes: we escape only `"`, `\` and < 0x20.
   void jsonString(Uint8List s) {
     _grow(s.length * 6 + 2);
     final b = _buf;
@@ -154,7 +155,7 @@ class ByteWriter {
     _len = n;
   }
 
-  /// Widok (bez kopii) na zapisane bajty. Ważny tylko do następnego reset().
+  /// A view (no copy) of the written bytes. Valid only until the next reset().
   Uint8List view() => Uint8List.sublistView(_buf, 0, _len);
 
   Uint8List copy() => Uint8List.fromList(view());
@@ -181,8 +182,9 @@ Uint8List _encodeHandRolled() {
     w.byte(0x7d);
   }
   w.ascii(']}');
-  // W serwerze wysłalibyśmy w.view() prosto do socketu. Tu kopiujemy, żeby
-  // porównanie z innymi wariantami (które zwracają świeży bufor) było uczciwe.
+  // In a server we would send w.view() straight to the socket. Here we copy,
+  // so the comparison with the other variants (which return a fresh buffer)
+  // is fair.
   return w.copy();
 }
 
@@ -193,7 +195,7 @@ Object? _decodeNaive() => jsonDecode(utf8.decode(_encoded));
 Object? _decodeFused() => _fusedDecoder.convert(_encoded);
 
 List<Suite> suites() {
-  // Sanity check: wszystkie encodery dają identyczne bajty.
+  // Sanity check: all encoders produce identical bytes.
   final a = _encodeNaive(),
       b = _encodeJsonUtf8Encoder(),
       c = _encodeHandRolled();
@@ -207,11 +209,11 @@ List<Suite> suites() {
     }
   }
 
-  final enc = Suite('json/encode feed (20 postów, ~2.6 KB)')
+  final enc = Suite('json/encode feed (20 posts, ~2.6 KB)')
     ..add('jsonEncode(map) + utf8.encode', () => blackHole(_encodeNaive()))
     ..add('JsonUtf8Encoder().convert(map)',
         () => blackHole(_encodeJsonUtf8Encoder()))
-    ..add('ByteWriter: bajty prosto do Uint8List (zero-alloc)',
+    ..add('ByteWriter: bytes straight into Uint8List (zero-alloc)',
         () => blackHole(_encodeHandRolled()));
 
   final dec = Suite('json/decode feed (~2.6 KB)')

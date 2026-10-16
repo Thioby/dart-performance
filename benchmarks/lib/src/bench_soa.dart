@@ -1,11 +1,12 @@
-/// Sekcja 1 przewodnika: Array-of-Structs (`List<Particle>`) vs
-/// Struct-of-Arrays (`Float64List` x, y, vx, vy) — typowa pętla animacji
-/// / symulacji fizyki wykonywana co klatkę (120 FPS = 8.3 ms budżetu).
+/// Guide section 1: Array-of-Structs (`List<Particle>`) vs
+/// Struct-of-Arrays (`Float64List` x, y, vx, vy) — a typical animation /
+/// physics simulation loop executed every frame (120 FPS = 8.3 ms budget).
 ///
-/// AoS: każdy `Particle` to obiekt na stercie z 4 polami. W AOT pola `double`
-/// są unboxowane wewnątrz obiektu, ale sam dostęp wymaga dereferencji
-/// wskaźnika z listy -> losowy dostęp do pamięci, słaba lokalność cache.
-/// SoA: 4 ciągłe bufory, pętla wektoryzowalna, zero wskaźników.
+/// AoS: every `Particle` is a heap object with 4 fields. In AOT the `double`
+/// fields are unboxed inside the object, but the access itself requires
+/// dereferencing a pointer from the list -> random memory access, poor cache
+/// locality.
+/// SoA: 4 contiguous buffers, a vectorizable loop, zero pointers.
 library;
 
 import 'dart:typed_data';
@@ -29,7 +30,7 @@ final Float64List _y = Float64List(_count);
 final Float64List _vx = Float64List(_count);
 final Float64List _vy = Float64List(_count);
 
-/// Jeden płaski bufor z "polami" pod stałymi offsetami (jak struct w C).
+/// One flat buffer with "fields" at fixed offsets (like a C struct).
 const _stride = 4;
 final Float64List _flat = Float64List(_count * _stride);
 
@@ -58,8 +59,8 @@ void _stepAoS(double dt) {
   }
 }
 
-/// Najgorszy wariant: idiomatyczny, "immutable", alokuje nowy obiekt
-/// na każdą cząstkę w każdej klatce (10k alokacji / klatkę -> GC jank).
+/// Worst variant: idiomatic, "immutable", allocates a new object
+/// per particle every frame (10k allocations / frame -> GC jank).
 List<Particle> _stepAoSImmutable(List<Particle> src, double dt) {
   return src
       .map((p) => Particle(p.x + p.vx * dt, p.y + p.vy * dt, p.vx, p.vy))
@@ -94,13 +95,13 @@ void _stepFlat(double dt) {
 
 List<Suite> suites() {
   var frame = _aos;
-  final s = Suite('soa/particles (10k cząstek, 1 klatka)')
-    ..add('List<Particle> map().toList() (alokuje 10k obj/klatkę)', () {
+  final s = Suite('soa/particles (10k particles, 1 frame)')
+    ..add('List<Particle> map().toList() (allocates 10k obj/frame)', () {
       frame = _stepAoSImmutable(frame, 1 / 120);
       blackHole(frame);
     })
-    ..add('List<Particle> mutacja w miejscu (AoS)', () => _stepAoS(1 / 120))
+    ..add('List<Particle> in-place mutation (AoS)', () => _stepAoS(1 / 120))
     ..add('4x Float64List (SoA)', () => _stepSoA(1 / 120), setup: _init)
-    ..add('1x Float64List ze stride (flat struct)', () => _stepFlat(1 / 120));
+    ..add('1x Float64List with stride (flat struct)', () => _stepFlat(1 / 120));
   return [s];
 }

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Uruchamia wszystkie benchmarki w trybie JIT i AOT i zapisuje wyniki.
-#   tool/run.sh            # wszystko
-#   tool/run.sh json,ffi   # wybrane grupy
+# Runs all benchmarks in JIT and AOT mode and saves the results.
+#   tool/run.sh            # everything
+#   tool/run.sh json,ffi   # selected groups
 #
-# AOT: pakiet sqlite3 >= 3 używa build hooks (native assets), których
-# `dart compile exe` nie wspiera — używamy `dart build cli`, który tworzy
-# bundle build/cli/<os_arch>/bundle/{bin/run_all,lib/libsqlite3.so}.
+# AOT: package sqlite3 >= 3 uses build hooks (native assets), which
+# `dart compile exe` does not support — we use `dart build cli`, which produces
+# the bundle build/cli/<os_arch>/bundle/{bin/run_all,lib/libsqlite3.so}.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ONLY="${1:-}"
@@ -21,4 +21,4 @@ dart build cli -o build/aot --verbosity=error
 AOT_BIN=$(find build/aot -type f -path '*/bin/run_all' | head -1)
 "$AOT_BIN" "${ARGS[@]}" --json results/aot.json --md results/aot.md
 echo
-echo "wyniki: results/jit.md results/aot.md"
+echo "results: results/jit.md results/aot.md"

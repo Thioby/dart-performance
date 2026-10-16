@@ -1,25 +1,25 @@
-/// Sekcja 1 przewodnika: `List<int>` / `List<double>` vs `dart:typed_data`
-/// oraz pułapka leniwie inicjalizowanych pól globalnych.
+/// Guide section 1: `List<int>` / `List<double>` vs `dart:typed_data`
+/// and the trap of lazily initialized global fields.
 ///
-/// Dlaczego `List<int>` jest wolne? Element listy generycznej to zawsze
-/// tagowany wskaźnik (8 bajtów). Małe inty (Smi, 63-bit na x64) mieszczą się
-/// w tagu, ale `List<int>` i tak zajmuje 8 B/element i każda operacja
-/// przechodzi przez sprawdzenie tagu. `List<double>` jest gorsze:
-/// każdy double to osobny obiekt na stercie (boxing) -> GC, cache misses.
-/// `Float64List`/`Int32List`/`Uint8List` to ciągły blok bajtów bez boxingu;
-/// AOT/JIT czyta/zapisuje je jedną instrukcją load/store.
+/// Why is `List<int>` slow? An element of a generic list is always a tagged
+/// pointer (8 bytes). Small ints (Smi, 63-bit on x64) fit in the tag, but
+/// `List<int>` still takes 8 B/element and every operation goes through a
+/// tag check. `List<double>` is worse: every double is a separate heap object
+/// (boxing) -> GC, cache misses.
+/// `Float64List`/`Int32List`/`Uint8List` is a contiguous block of bytes with
+/// no boxing; AOT/JIT reads/writes it with a single load/store instruction.
 ///
-/// PUŁAPKA: `final x = ...;` na poziomie biblioteki (top-level) lub `static`
-/// jest inicjalizowane leniwie. Każdy odczyt `x` w gorącej pętli to wywołanie
-/// gettera ze sprawdzeniem "czy już zainicjalizowane". Zawsze kopiuj taką
-/// referencję do zmiennej lokalnej przed pętlą (`final l = _f64;`).
+/// TRAP: a `final x = ...;` at library level (top-level) or `static` is
+/// initialized lazily. Every read of `x` in a hot loop is a getter call with
+/// an "already initialized?" check. Always copy such a reference into a local
+/// variable before the loop (`final l = _f64;`).
 library;
 
 import 'dart:typed_data';
 
 import '../harness.dart';
 
-const _n = 1 << 16; // 65 536 elementów
+const _n = 1 << 16; // 65 536 elements
 
 final List<int> _listInt = List<int>.generate(_n, (i) => i & 0xff);
 final Uint8List _u8 = Uint8List.fromList(_listInt);
@@ -84,7 +84,7 @@ double _sumF64(Float64List l) {
   return s;
 }
 
-/// Celowo czyta top-level `_f64` w każdej iteracji (leniwy getter).
+/// Deliberately reads the top-level `_f64` on every iteration (lazy getter).
 double _sumF64ViaGlobal() {
   var s = 0.0;
   for (var i = 0; i < _f64.length; i++) {
@@ -93,7 +93,8 @@ double _sumF64ViaGlobal() {
   return s;
 }
 
-/// Budowanie listy: growable `List<int>` z `add` vs prealokowany `Int32List`.
+/// Building a list: growable `List<int>` with `add` vs a preallocated
+/// `Int32List`.
 List<int> _buildGrowable() {
   final out = <int>[];
   for (var i = 0; i < _n; i++) {
@@ -118,7 +119,7 @@ Int32List _buildTyped() {
   return out;
 }
 
-/// Boxing double: `List<double>.add` alokuje obiekt Double na każdy element.
+/// Boxing double: `List<double>.add` allocates a Double object per element.
 List<double> _buildGrowableDouble() {
   final out = <double>[];
   for (var i = 0; i < _n; i++) {
@@ -136,28 +137,28 @@ Float64List _buildTypedDouble() {
 }
 
 List<Suite> suites() {
-  final sumInt = Suite('typed_lists/sum int (65k elementów)')
+  final sumInt = Suite('typed_lists/sum int (65k elements)')
     ..add('List<int> indexed loop', () => blackHole(_sumListInt(_listInt)))
     ..add('List<int> for-in', () => blackHole(_sumListIntForIn(_listInt)))
     ..add('Int64List indexed loop', () => blackHole(_sumI64(_i64)))
     ..add('Int32List indexed loop', () => blackHole(_sumI32(_i32)))
     ..add('Uint8List indexed loop', () => blackHole(_sumU8(_u8)));
 
-  final sumDouble = Suite('typed_lists/sum double (65k elementów)')
+  final sumDouble = Suite('typed_lists/sum double (65k elements)')
     ..add('List<double> indexed loop (boxed)',
         () => blackHole(_sumListDouble(_listDouble)))
-    ..add('Float64List przez top-level final (leniwy getter w pętli)',
+    ..add('Float64List via top-level final (lazy getter in loop)',
         () => blackHole(_sumF64ViaGlobal()))
-    ..add('Float64List przekazana jako parametr/lokalna',
+    ..add('Float64List passed as parameter/local',
         () => blackHole(_sumF64(_f64)));
 
-  final build = Suite('typed_lists/build (65k elementów)')
+  final build = Suite('typed_lists/build (65k elements)')
     ..add('List<int> growable add()', () => blackHole(_buildGrowable()))
-    ..add('List<int>.filled prealokowana', () => blackHole(_buildFilled()))
-    ..add('Int32List prealokowana', () => blackHole(_buildTyped()))
+    ..add('List<int>.filled preallocated', () => blackHole(_buildFilled()))
+    ..add('Int32List preallocated', () => blackHole(_buildTyped()))
     ..add('List<double> growable add() (boxing)',
         () => blackHole(_buildGrowableDouble()))
-    ..add('Float64List prealokowana', () => blackHole(_buildTypedDouble()));
+    ..add('Float64List preallocated', () => blackHole(_buildTypedDouble()));
 
   return [sumInt, sumDouble, build];
 }

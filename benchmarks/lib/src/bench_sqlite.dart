@@ -1,17 +1,17 @@
-/// Sekcja 2 przewodnika: Group Commit / batching w SQLite przez
-/// `package:sqlite3` (FFI). Pokazuje, dlaczego 10 000 osobnych
-/// auto-commitów trwa sekundy (każdy COMMIT = fsync WAL przy
-/// synchronous=FULL, a przy NORMAL i tak pełny cykl pager/lock), a jedna
-/// transakcja z prepared statement trwa milisekundy.
+/// Guide section 2: Group Commit / batching in SQLite via
+/// `package:sqlite3` (FFI). Shows why 10,000 separate auto-commits take
+/// seconds (every COMMIT = a WAL fsync at synchronous=FULL, and at NORMAL
+/// still a full pager/lock cycle), while a single transaction with a
+/// prepared statement takes milliseconds.
 ///
-/// Warianty:
-///  1. `db.execute('INSERT ... VALUES (?, ?)', [a, b])` per rekord, autocommit:
-///     kompilacja SQL + bind + COMMIT na każdy wiersz.
-///  2. Prepared statement, autocommit: bez kompilacji, nadal COMMIT per wiersz.
-///  3. Prepared statement w jednej transakcji (BEGIN ... COMMIT): group commit.
-///  4. Jak 3, ale w paczkach po 500 (kompromis latencja/przepustowość —
-///     tak działa serwer: zbiera żądania z jednej iteracji pętli zdarzeń
-///     i commituje raz).
+/// Variants:
+///  1. `db.execute('INSERT ... VALUES (?, ?)', [a, b])` per record, autocommit:
+///     SQL compilation + bind + COMMIT for every row.
+///  2. Prepared statement, autocommit: no compilation, still a COMMIT per row.
+///  3. Prepared statement in one transaction (BEGIN ... COMMIT): group commit.
+///  4. Like 3, but in batches of 500 (a latency/throughput trade-off — this is
+///     how the server works: it collects the requests from one event-loop
+///     iteration and commits once).
 library;
 
 import 'dart:io';
@@ -88,12 +88,12 @@ void _preparedBatches(int batch) {
   }
 }
 
-/// Odczyt: `select()` buduje `ResultSet` (lista `List<Object?>` + `Row`
-/// tworzony przy każdym dostępie), `selectCursor()` czyta wiersz po wierszu
-/// (nadal `Row` + lista per wiersz), a `stmt.raw` (`RawPreparedStatement`,
-/// sqlite3 >= 3.5) to bezpośrednie `sqlite3_step`/`sqlite3_column_int64`
-/// bez żadnego obiektu na stercie Darta. `columnBlobInto` (>= 3.7) czyta
-/// BLOB do reużywanego bufora zamiast alokować `Uint8List` per wartość.
+/// Reading: `select()` builds a `ResultSet` (a list of `List<Object?>` + a
+/// `Row` created on every access), `selectCursor()` reads row by row (still a
+/// `Row` + a list per row), and `stmt.raw` (`RawPreparedStatement`, sqlite3
+/// >= 3.5) is direct `sqlite3_step`/`sqlite3_column_int64` with no object on
+/// the Dart heap at all. `columnBlobInto` (>= 3.7) reads the BLOB into a
+/// reused buffer instead of allocating a `Uint8List` per value.
 late PreparedStatement _selectAll;
 late PreparedStatement _selectBlob;
 final Uint8List _blobScratch = Uint8List(4096);
@@ -125,7 +125,7 @@ void _readRaw() {
   blackHole(s);
 }
 
-/// Kolumna TEXT czytana jako String (utf8.decode per wiersz) ...
+/// The TEXT column read as a String (utf8.decode per row) ...
 void _readTextAsString() {
   var n = 0;
   final raw = _selectAll.raw;
@@ -136,8 +136,9 @@ void _readTextAsString() {
   blackHole(n);
 }
 
-/// ... vs `CAST(body AS BLOB)` + `columnBlobInto` do reużywanego bufora
-/// (wzorzec z dart-rawsocket-C-Hatton: surowe bajty UTF-8 prosto do odpowiedzi).
+/// ... vs `CAST(body AS BLOB)` + `columnBlobInto` into a reused buffer
+/// (pattern from dart-rawsocket-C-Hatton: raw UTF-8 bytes straight into the
+/// response).
 void _readTextAsBlobInto() {
   var n = 0;
   final raw = _selectBlob.raw;
@@ -149,29 +150,28 @@ void _readTextAsBlobInto() {
 }
 
 List<Suite> suites() {
-  final write = Suite('sqlite/insert 10k wierszy (WAL, synchronous=NORMAL)',
+  final write = Suite('sqlite/insert 10k rows (WAL, synchronous=NORMAL)',
       sampleMillis: 1, samples: 3)
-    ..add('execute(sql, args) per wiersz, autocommit', _execPerRowAutocommit)
-    ..add('prepared statement, autocommit per wiersz', _preparedAutocommit)
+    ..add('execute(sql, args) per row, autocommit', _execPerRowAutocommit)
+    ..add('prepared statement, autocommit per row', _preparedAutocommit)
     ..add(
-        'prepared + paczki po 100 (BEGIN/COMMIT)', () => _preparedBatches(100))
-    ..add('prepared + paczki po 1000', () => _preparedBatches(1000))
-    ..add(
-        'prepared + jedna transakcja (group commit)', _preparedOneTransaction);
+        'prepared + batches of 100 (BEGIN/COMMIT)', () => _preparedBatches(100))
+    ..add('prepared + batches of 1000', () => _preparedBatches(1000))
+    ..add('prepared + one transaction (group commit)', _preparedOneTransaction);
 
-  final read = Suite('sqlite/select 10k wierszy', sampleMillis: 50, samples: 5)
-    ..add('select() -> ResultSet (lista Row)', _readResultSet, setup: () {
+  final read = Suite('sqlite/select 10k rows', sampleMillis: 50, samples: 5)
+    ..add('select() -> ResultSet (list of Row)', _readResultSet, setup: () {
       _preparedOneTransaction();
       _selectAll =
           _db.prepare('SELECT id, user_id, body FROM t', persistent: true);
     })
-    ..add('selectCursor() wiersz po wierszu', _readCursor)
+    ..add('selectCursor() row by row', _readCursor)
     ..add('stmt.raw: step() + columnInt64() (zero-alloc)', _readRaw);
 
-  final text = Suite('sqlite/read 10k kolumn TEXT',
+  final text = Suite('sqlite/read 10k TEXT columns',
       sampleMillis: 50, samples: 5)
-    ..add('raw.columnText() -> String per wiersz', _readTextAsString)
-    ..add('CAST AS BLOB + raw.columnBlobInto(bufor) (zero-alloc)',
+    ..add('raw.columnText() -> String per row', _readTextAsString)
+    ..add('CAST AS BLOB + raw.columnBlobInto(buffer) (zero-alloc)',
         _readTextAsBlobInto, setup: () {
       _selectBlob = _db.prepare('SELECT id, user_id, CAST(body AS BLOB) FROM t',
           persistent: true);
