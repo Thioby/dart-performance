@@ -5,9 +5,9 @@ description: Efficient dart:ffi and access to SQLite/native code - @Native with 
 
 # dart-ffi-perf — FFI and database without overhead
 
-> 🇬🇧 Active skill file. Polish version: `SKILL.pl.md` in this directory.
+> 🇬🇧 Active skill file. Polish version: `SKILL.pl.md` in this directory. Self-contained: works in any Dart/Flutter project.
 
-Pattern sources: `simolus3/sqlite3.dart` (`lib/src/ffi/`), `isar` v4 (`isar_core.dart`, `ffigen.yaml`), `objectbox-dart` (`native/bindings/flatbuffers.dart`, `store.dart`). Numbers from `benchmarks/` (AOT). Theory: `docs/en/dart-flutter-extreme-performance-guide.md` §2.
+Patterns distilled from `sqlite3.dart`, Isar and ObjectBox; reference gains measured on Dart 3.13 AOT, x64.
 
 ## 1. Binding functions: `@Native`, not `lookupFunction`
 
@@ -18,11 +18,11 @@ Pattern sources: `simolus3/sqlite3.dart` (`lib/src/ffi/`), `isar` v4 (`isar_core
 external int addI64(int a, int b);
 ```
 
-`@Native` resolves the address at load time and lets AOT call the trampoline directly; `late final` with `lookupFunction` adds an initialization check on every call. Library: via *native assets* (`hook/build.dart`, as `sqlite3` v3 does) or `@DefaultAsset`/`DynamicLibrary.open` + `Native.addressOf`.
+`@Native` resolves the address at load time and lets AOT call the trampoline directly; `late final` with `lookupFunction` adds an initialization check on every call. Library: via *native assets* (`hook/build.dart`) or `@DefaultAsset`/`DynamicLibrary.open` + `Native.addressOf`.
 
 ## 2. `isLeaf: true` — the three-condition rule
 
-Mark as leaf only a function that (1) **never calls back into Dart** (callbacks, UDFs, hooks, a VFS), (2) **never blocks** (no I/O, mutexes, `sleep`), (3) is short. Gain: 21.6 ns → 5.4 ns per call (4×). Breaking (1) = crash, breaking (2) = a blocked GC for the whole isolate group.
+Mark as leaf only a function that (1) **never calls back into Dart** (callbacks, UDFs, hooks, a VFS), (2) **never blocks** (no I/O, mutexes, `sleep`), (3) is short. Gain: ~22 ns → ~5 ns per call (4×). Breaking (1) = crash, breaking (2) = a blocked GC for the whole isolate group.
 
 How libraries do it:
 - `sqlite3.dart` — leaf on only 10 trivial getters (`sqlite3_changes`, `sqlite3_last_insert_rowid`, `sqlite3_column_count`…); **`sqlite3_step` is not leaf**, because it can invoke a user function written in Dart.
@@ -34,9 +34,9 @@ When designing your own C API: separate "pure" functions (leaf) from those with 
 
 | Operation (4 KB) | AOT |
 |---|---:|
-| `ptr[i]` in a loop | 10 580 ns |
-| `Uint8List.fromList(ptr.asTypedList(n))` | 710 ns |
-| `ptr.asTypedList(n)` (view) | **12 ns** |
+| `ptr[i]` in a loop | ~10 µs |
+| `Uint8List.fromList(ptr.asTypedList(n))` | ~0.7 µs |
+| `ptr.asTypedList(n)` (view) | **~12 ns** |
 
 ```dart
 final Uint8List view = ptr.asTypedList(size);                       // zero-copy, valid while the memory lives
@@ -45,25 +45,23 @@ final bd = ByteData.view(view.buffer, view.offsetInBytes, size);    // fields vi
 final owned = ptr.asTypedList(size, finalizer: malloc.nativeFree);
 ```
 
-Copy into **your own, reused** buffer when the native one is transient (`sqlite3_column_blob` is valid only until the next `step`): `target.setRange(off, off + n, src.asTypedList(n))` — that is how `columnBlobInto` works.
+Copy into **your own, reused** buffer when the native one is transient (`sqlite3_column_blob` is valid only until the next `step`): `target.setRange(off, off + n, src.asTypedList(n))`.
 
 ## 4. Native allocation: once, not per call
 
 | 256 B | AOT |
 |---|---:|
-| `malloc` + `free` per call | 235 ns |
-| `using((Arena a) => a<Uint8>(256))` | 290 ns |
-| reused buffer | **172 ns** |
+| `malloc` + `free` per call | ~235 ns |
+| `using((Arena a) => a<Uint8>(256))` | ~290 ns |
+| reused buffer | **~170 ns** |
 
-`Arena` is a correctness tool (frees on exceptions) for many temporary allocations, not a speed-up. In the hot path keep **out-pointers allocated once**:
+`Arena` is a correctness tool (frees on exceptions) for many temporary allocations, not a speed-up. In the hot path keep **out-pointers allocated once** (Isar: static `ptrPtr`/`countPtr`/`boolPtr`; ObjectBox: `ReadPointers` per store):
 
 ```dart
-// Isar: static Pointer<Pointer<NativeType>> ptrPtr = malloc(); static Pointer<Uint32> countPtr = malloc();
-// ObjectBox: class ReadPointers { final dataPtrPtr = malloc<Pointer<Uint8>>(); final sizePtr = malloc<Size>(); }
 final class Native { static final Pointer<Int64> outLen = malloc<Int64>(); }   // lives for the isolate's lifetime
 ```
 
-Scratch buffers: growing, reset, reallocated only when they exceed a threshold (`BuilderWithCBuffer.resetIfLarge()` > 64 KiB in ObjectBox).
+Scratch buffers: growing, reset, reallocated only when they exceed a threshold (ObjectBox resets its FlatBuffers builder only above 64 KiB).
 
 ## 5. Resource ownership: `NativeFinalizer` + `Finalizable`
 
@@ -78,14 +76,14 @@ final class Handle implements Finalizable {       // Finalizable: the object sta
 ```
 
 - A native finalizer is a C function `void (*)(void*)` — zero Dart code in the GC; `externalSize` helps the GC estimate memory pressure.
-- Native finalizers fire in the **creation order of the `NativeFinalizer` objects** (ObjectBox creates the transaction finalizer before the store finalizer).
-- `leak()`/`borrowed` (sqlite3.dart): detach the finalizer when ownership moves to native code.
+- Native finalizers fire in the **creation order of the `NativeFinalizer` objects** (create the child's finalizer before the parent's).
+- Detach the finalizer when ownership moves to native code.
 
 ## 6. Text across the FFI boundary
 
-- To C: `utf8.encode` → `malloc` + `memcpy`, destructor `malloc.nativeFree` instead of `SQLITE_TRANSIENT` (avoids a second copy in C) — this is how `sqlite3_bind_text` in `sqlite3.dart` works. If you already have UTF-8 bytes — bind them as a BLOB.
-- From C: `ptr.asTypedList(len)` + `utf8.decode` (1 copy). For ASCII `String.fromCharCodes(view)` is faster; Isar gets an `is_ascii` flag from Rust and picks the path.
-- Isar writes strings through a grow-only `Pointer<Uint16>` and `codeUnitAt` (no `utf8.encode`), and lets Rust do the UTF-8 encoding.
+- To C: `utf8.encode` → `malloc` + `memcpy`, destructor `malloc.nativeFree` instead of `SQLITE_TRANSIENT` (avoids a second copy in C). If you already have UTF-8 bytes — bind them as a BLOB.
+- From C: `ptr.asTypedList(len)` + `utf8.decode` (1 copy). For ASCII `String.fromCharCodes(view)` is faster; let the native side report an `is_ascii` flag.
+- Writing strings: a grow-only `Pointer<Uint16>` filled with `codeUnitAt` and UTF-8 encoding on the native side avoids `utf8.encode` allocations (Isar).
 
 ## 7. SQLite via `package:sqlite3` (≥ 3.7)
 
@@ -95,7 +93,7 @@ db..execute('PRAGMA journal_mode=WAL')..execute('PRAGMA synchronous=NORMAL')..ex
 final ins = db.prepare('INSERT INTO t(a,b) VALUES(?,?)', persistent: true);   // SQLITE_PREPARE_PERSISTENT
 ```
 
-**Allocation-free reads** (4.7× vs `select()`):
+**Allocation-free reads** (~4.7× vs `select()`):
 
 ```dart
 final raw = stmt.raw;                                      // RawPreparedStatement (extension type, 0 allocations)
@@ -108,11 +106,12 @@ stmt.reset();
 
 Caveat: raw does not check state — calling it on a closed statement is a use-after-free. Enclose it in one DAO class.
 
-**Group commit** (13× on 10k writes): one transaction per batch, where a batch = whatever is already waiting in this event-loop iteration:
+**Group commit** (~13× on 10k writes): one transaction per batch, where a batch = whatever is already waiting in this event-loop iteration:
 
 ```dart
 class WriteBatcher {
   final Database db; final _pending = <(void Function(), Completer<void>)>[]; bool _scheduled = false;
+  WriteBatcher(this.db);
   Future<void> submit(void Function() apply) {
     final c = Completer<void>(); _pending.add((apply, c));
     if (!_scheduled) { _scheduled = true; scheduleMicrotask(_flush); }   // no timer: zero latency with 1 request
@@ -120,14 +119,14 @@ class WriteBatcher {
   }
   void _flush() {
     _scheduled = false; final batch = List.of(_pending); _pending.clear();
-    try { db.execute('BEGIN IMMEDIATE'); for (final (f, _) in batch) f(); db.execute('COMMIT');
-          for (final (_, c) in batch) c.complete(); }
-    catch (e, st) { db.execute('ROLLBACK'); for (final (_, c) in batch) c.completeError(e, st); }
+    try { db.execute('BEGIN IMMEDIATE'); for (final (f, _) in batch) { f(); } db.execute('COMMIT');
+          for (final (_, c) in batch) { c.complete(); } }
+    catch (e, st) { db.execute('ROLLBACK'); for (final (_, c) in batch) { c.completeError(e, st); } }
   }
 }
 ```
 
-Batches of 100 give 85 % of the full-transaction gain — do not wait for "everything". Run the WAL checkpoint (`PRAGMA wal_checkpoint(PASSIVE)`) off the response path, every N commits or when the queue is empty. Isar: `putAll`; ObjectBox: `putMany` (one transaction, a reused FlatBuffers builder on `malloc`).
+Batches of 100 give ~85 % of the full-transaction gain — do not wait for "everything". Run the WAL checkpoint (`PRAGMA wal_checkpoint(PASSIVE)`) off the response path, every N commits or when the queue is empty. Isar: `putAll`; ObjectBox: `putMany`.
 
 ## 8. Binding review checklist
 
@@ -138,3 +137,5 @@ Batches of 100 give 85 % of the full-transaction gain — do not wait for "every
 - [ ] `NativeCallable`s closed; no callbacks from functions marked leaf
 - [ ] SQLite: `persistent: true`, `mutex: false` for a single isolate, `raw` in row loops, transactions per batch
 - [ ] AOT: packages with build hooks (`sqlite3` ≥ 3) are built with `dart build cli`, not `dart compile exe`
+
+Background reading with runnable benchmarks: https://github.com/Thioby/dart-performance

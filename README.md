@@ -31,7 +31,16 @@ AOT budowany jest przez `dart build cli` (pakiet `sqlite3` ≥ 3 używa native-a
 
 ## Skille
 
-Skille leżą w `.claude/skills/<nazwa>/SKILL.md` (aktywny plik, po angielsku — angielskie opisy trafniej wyzwalają skill; polska wersja referencyjna obok jako `SKILL.pl.md`) i są wykrywane przez Claude Code w tym repozytorium (można je skopiować do `~/.claude/skills/`, by działały globalnie).
+Skille są **uniwersalne i samowystarczalne** — nie odwołują się do plików tego repozytorium, więc działają w dowolnym projekcie Dart/Flutter. Aktywny plik to angielski `SKILL.md` (angielskie opisy trafniej wyzwalają skill); polska wersja referencyjna leży obok jako `SKILL.pl.md`. Instalacja w innym projekcie:
+
+```bash
+# globalnie (wszystkie projekty):
+cp -r .claude/skills/* ~/.claude/skills/
+# albo tylko w jednym projekcie:
+cp -r .claude/skills/* /sciezka/do/projektu/.claude/skills/
+```
+
+Liczby cytowane w skillach to pomiary referencyjne z tego repo (Dart 3.13, AOT, x64); skill `dart-benchmark` zawiera gotowy do wklejenia harness, by zmierzyć to samo u siebie.
 
 | Skill | Kiedy się włącza | Co daje |
 |---|---|---|

@@ -5,9 +5,9 @@ description: Designing concurrency in Dart/Flutter - when an isolate pays off (a
 
 # dart-isolates — concurrency without copying
 
-> 🇬🇧 Active skill file. Polish version: `SKILL.pl.md` in this directory.
+> 🇬🇧 Active skill file. Polish version: `SKILL.pl.md` in this directory. Self-contained: works in any Dart/Flutter project.
 
-Numbers from `benchmarks/` (`--only isolates`, AOT, Dart 3.13) and the case study `packages/users_pipeline/` (`runIsolateBenchmark`). Theory and server context: `docs/en/dart-flutter-extreme-performance-guide.md` §3 and §6.
+Reference numbers: Dart 3.13 AOT, x64. Verify in your project (skill `dart-benchmark`).
 
 ## 1. Decision: do you need an isolate at all?
 
@@ -15,14 +15,14 @@ An isolate pays off when **CPU work > ~1 ms** blocks a frame/the event loop. Fix
 
 | Operation | AOT |
 |---|---:|
-| `Isolate.run(() => 1)` (spawn + port + result) | ~340 µs |
-| `SendPort.send` 10k `Map`s (deep copy) | 9.2 ms |
-| `SendPort.send` `Uint8List` 120 KB | 72 µs |
-| `TransferableTypedData` 120 KB (`fromList` copies + move) | 124 µs |
-| `Uint8List` 16 MB | 14.6 ms |
-| `TransferableTypedData` 16 MB | 7.3 ms |
-| `Isolate.run` → `List<User>` (10k model objects, deep copy) | 103.6 ms — **slower than parsing on the main thread (93.6 ms)** |
-| `Isolate.run` → `TransferableTypedData` (packed columnar table) | 30.7 ms |
+| `Isolate.run(() => 1)` (spawn + port + result) | ~0.1–0.35 ms |
+| `SendPort.send` of 10k `Map`s (deep copy) | ~9 ms |
+| `SendPort.send` of a 120 KB `Uint8List` | ~70 µs |
+| `TransferableTypedData` 120 KB (`fromList` copies + move) | ~120 µs |
+| `Uint8List` 16 MB | ~15 ms |
+| `TransferableTypedData` 16 MB | ~7 ms |
+| `Isolate.run` → `List<Model>` of 10k parsed records | ~104 ms — **slower than parsing on the main thread (~94 ms)** |
+| `Isolate.run` → `TransferableTypedData` (packed columnar table) | ~31 ms |
 
 Before adding an isolate, check three cheaper options:
 1. **Remove allocations** from the synchronous version (skill `dart-zero-alloc`) — 5 ms often becomes 0.3 ms.
@@ -36,12 +36,26 @@ I/O **never** needs an isolate — `dart:io` is asynchronous on epoll/kqueue/IOC
 `SendPort.send` serializes the graph (every object: an allocation + copy on the receiver's side, on **its** thread — received in the UI isolate this is jank). Rules:
 
 ```dart
-// 🐢  port.send(models);                           // List<Model> -> 10k allocations at the receiver
+// 🐢  port.send(models);                           // List<Model> -> thousands of allocations at the receiver
 // 🚀  port.send(columnarBytes);                    // Uint8List / Float64List: one memcpy
-// 🚀🚀 port.send(TransferableTypedData.fromList([bytes]));   // receiver: materialize() O(1), the receiver's GC never sees a big object
+// 🚀🚀 port.send(TransferableTypedData.fromList([bytes]));   // receiver: materialize() O(1); the receiver's GC never sees a big object
 ```
 
-Design the worker's result as **columns in one `ByteData`** (offsets, `Endian.little`) and read them through views (`Float64List.view(buffer, off, n)`) — without deserializing into objects. Worked example: `UserTable.packContiguous()` / `UserTable.unpack(ByteBuffer)` in `packages/users_pipeline/lib/src/columnar.dart` (all columns as views over one buffer).
+Design the worker's result as **columns in one buffer** and read them through views — no deserialization into objects:
+
+```dart
+// pack: header (counts) + column bytes, each column aligned to its element size
+Uint8List pack(Int32List id, Float64List score) {
+  final n = id.length; final out = ByteData(8 + n * 4 + ((n * 4 + 7) & ~7) - n * 4 + n * 8);
+  out.setInt32(0, n, Endian.little);
+  var off = 8;
+  Uint8List.view(out.buffer, off, n * 4).setRange(0, n * 4, Uint8List.view(id.buffer, id.offsetInBytes, n * 4));
+  off = (off + n * 4 + 7) & ~7;                                   // align to 8 for Float64List
+  Uint8List.view(out.buffer, off, n * 8).setRange(0, n * 8, Uint8List.view(score.buffer, score.offsetInBytes, n * 8));
+  return out.buffer.asUint8List();
+}
+// unpack on the receiver: Int32List.view(buf, 8, n), Float64List.view(buf, alignedOff, n) — views, zero copies
+```
 
 ### What is sent without copying
 
@@ -64,31 +78,54 @@ final view = result.materialize().asFloat64List();
 
 ### Long-lived worker (avoid a spawn per task)
 ```dart
-// worker: ReceivePort + SendPort handshake; listen() loop; replies with a small ack or TransferableTypedData
-// client: keeps the SendPort; queues tasks; uses a StreamIterator on the ReceivePort for in-order replies
+late SendPort _worker;
+late StreamIterator<Object?> _replies;
+
+void _workerMain(SendPort reply) {                     // top-level function
+  final port = ReceivePort();
+  reply.send(port.sendPort);                           // handshake: hand over your SendPort
+  port.listen((msg) {
+    if (msg is TransferableTypedData) { reply.send(process(msg.materialize().asUint8List())); }
+    else if (msg == null) { port.close(); }           // shutdown: no open ports = the isolate exits on its own
+  });
+}
+
+Future<void> start() async {
+  final inbox = ReceivePort();
+  await Isolate.spawn(_workerMain, inbox.sendPort);
+  _replies = StreamIterator(inbox);
+  await _replies.moveNext();
+  _worker = _replies.current as SendPort;
+}
+
+Future<Object?> submit(Uint8List payload) async {      // one request in flight at a time, replies in order
+  _worker.send(TransferableTypedData.fromList([payload]));
+  await _replies.moveNext();
+  return _replies.current;
+}
 ```
-Complete template: `benchmarks/lib/src/bench_isolates.dart` (`_workerMain`, `setupIsolates`, `_roundTrip`) and §3.2 of the guide.
+Several tasks in flight → add an `id` to the message and keep a `Map<int, Completer>`; keep reply payloads flat too (`id` in the first 4 bytes of a `Uint8List`).
 
 ### Flutter `compute()`
-`compute` = `Isolate.run` with a copy of the argument and the result. For JSON < ~50 KB it is **slower** than parsing on the UI thread. Use it for decoding large files/images and return bytes, not lists of models. In `flutter_bench/` the row "compute(): slow → List<User>" shows that the deep copy on receipt stalls the UI again, while "Isolate.run: scanner → Transferable" keeps it smooth.
+`compute` = `Isolate.run` with a copy of the argument and the result. For JSON < ~50 KB it is **slower** than parsing on the UI thread. Use it for decoding large files/images and return bytes, not lists of models — a deep copy of 10k model objects on receipt stalls the UI again, while `TransferableTypedData` keeps it smooth. Alternatively run the *whole* pipeline in the isolate and return only the small final result (e.g. the top 100 rows).
 
 ## 4. Closure over-capturing (dart-lang/sdk#36983)
 
-A lambda passed to `Isolate.run` **inside a method of a class** shares its context with the method's other closures and may capture `this`. If `this` is a `State` with an `AnimationController`, you get "Illegal argument in isolate message: object is unsendable - TickerFuture". Fix: isolate work in **top-level or static functions** with explicit arguments (ObjectBox: "Static callback to avoid over-capturing"):
+A lambda passed to `Isolate.run` **inside a method of a class** shares its context with the method's other closures and may capture `this`. If `this` is a `State` with an `AnimationController`, you get "Illegal argument in isolate message: object is unsendable - TickerFuture". Fix: isolate work in **top-level or static functions** with explicit arguments (ObjectBox comments every such callback with "Static callback to avoid over-capturing"):
 
 ```dart
-// 🐢  await Isolate.run(() => decodeColumnar(bytes));            // inside _MyState: may capture `this`
+// 🐢  await Isolate.run(() => parse(bytes));                          // inside _MyState: may capture `this`
 // 🚀
-Future<TransferableTypedData> scanInIsolate(Uint8List bytes) =>
-    Isolate.run(() => TransferableTypedData.fromList([decodeColumnar(bytes).packContiguous()]));
+Future<TransferableTypedData> parseInIsolate(Uint8List bytes) =>
+    Isolate.run(() => TransferableTypedData.fromList([parseToColumns(bytes)]));
 ```
 
 ## 5. Isolate groups (servers, many-core machines)
 
 - `Isolate.spawn` → the same **isolate group**: a shared heap, shared GC and safepoints (one isolate's scavenge stops them all), cheaper messages.
-- `Isolate.spawnUri(Platform.script, args, msg)` → a **new group**: a separate heap and GC. TechEmpower `dart3_aot` splits isolates into groups of `MAX_ISOLATES=8` to "bypass internal VM scaling bottlenecks" on 28+ core machines.
+- `Isolate.spawnUri(Platform.script, args, msg)` → a **new group**: a separate heap and GC. Splitting isolates into groups of ~8 bounds GC interference on many-core machines.
 - HTTP server: `HttpServer.bind(addr, port, shared: true)` in every isolate — the kernel distributes `accept()`; no dispatcher isolate, no `SendPort` per request.
-- On 1 vCPU: **one isolate** (extra isolates = context switches and memory; that is what the Dart entry in the $12 challenge did).
+- On 1 vCPU: **one isolate** (extra isolates = context switches and memory).
 
 ## 6. Pitfalls
 
@@ -106,3 +143,5 @@ Future<TransferableTypedData> scanInIsolate(Uint8List bytes) =>
 - [ ] isolate work in top-level/static functions (no `this` capture)
 - [ ] server: `shared: true`, an isolate per core, optionally groups via `spawnUri`
 - [ ] errors and port closing handled
+
+Background reading with runnable benchmarks: https://github.com/Thioby/dart-performance
