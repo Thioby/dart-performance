@@ -1,6 +1,6 @@
-/// Realistyczny pipeline "10k użytkowników z JSON": fetch -> decode ->
-/// filter/sort/group -> encode, w wariantach od idiomatycznego do
-/// kolumnowego zero-alloc. Zobacz README.md tego pakietu.
+/// Realistic "10k users from JSON" pipeline: fetch -> decode ->
+/// filter/sort/group -> encode, in variants from idiomatic to
+/// columnar zero-alloc. See this package's README.md.
 library;
 
 export 'src/bench.dart';

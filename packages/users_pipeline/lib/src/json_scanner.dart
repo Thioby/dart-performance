@@ -1,10 +1,10 @@
-/// Parser JSON po bajtach, wyspecjalizowany pod tablicę użytkowników:
-/// czyta `[ {...}, {...} ]` prosto do [UserTable], bez tworzenia drzewa
-/// `Map`/`List`/`String`. Nieznane pola są pomijane (walidowane składniowo),
-/// więc dodanie pola do API nic nie psuje.
+/// Byte-level JSON parser specialized for the users array:
+/// reads `[ {...}, {...} ]` straight into [UserTable], without building a
+/// `Map`/`List`/`String` tree. Unknown fields are skipped (validated syntactically),
+/// so adding a field to the API breaks nothing.
 ///
-/// To jest odpowiednik `BodySeed` ze zwycięskiego Rusta i `_parseHead` z
-/// Dart submission: jeden przebieg, offsety zamiast Stringów.
+/// This is the counterpart of `BodySeed` from the winning Rust entry and `_parseHead` from
+/// the Dart submission: one pass, offsets instead of Strings.
 library;
 
 import 'dart:typed_data';
@@ -16,7 +16,7 @@ class JsonFormatError extends FormatException {
   JsonFormatError(String message, int offset) : super(message, null, offset);
 }
 
-/// Parsuje bajty JSON do tabeli kolumnowej.
+/// Parses JSON bytes into a columnar table.
 UserTable parseUsersColumnar(Uint8List b) {
   final p = _Scanner(b);
   final t = UserTable(b, capacity: 1024);
@@ -43,13 +43,13 @@ UserTable parseUsersColumnar(Uint8List b) {
   return t;
 }
 
-// Kody kluczy rozpoznawane po długości i pierwszym bajcie (jak nagłówki HTTP).
+// Key codes recognized by length and first byte (like HTTP headers).
 const _kUnknown = 0;
 const _kId = 1, _kUsername = 2, _kEmail = 3, _kFirst = 4, _kLast = 5;
 const _kAge = 6, _kCountry = 7, _kCity = 8, _kActive = 9, _kPremium = 10;
 const _kScore = 11, _kBalance = 12, _kCreated = 13, _kTags = 14, _kAddress = 15;
 
-// Tablica: kraj po 2 literach ASCII -> indeks w `countries` (lub -1).
+// Lookup table: country by its 2 ASCII letters -> index in `countries` (or -1).
 final Int8List _countryLookup = () {
   final l = Int8List(26 * 26)..fillRange(0, 26 * 26, -1);
   for (var i = 0; i < countries.length; i++) {
@@ -71,7 +71,9 @@ class _Scanner {
   }
 
   void expect(int c) {
-    if (next() != c) throw JsonFormatError('expected ${String.fromCharCode(c)}', pos - 1);
+    if (next() != c) {
+      throw JsonFormatError('expected ${String.fromCharCode(c)}', pos - 1);
+    }
   }
 
   void ws() {
@@ -85,17 +87,21 @@ class _Scanner {
     }
   }
 
-  /// Przeskakuje treść stringa (po otwierającym "). Zwraca offset końca
-  /// (pozycja zamykającego "), pos ustawione za nim.
+  /// Skips the body of a string (after the opening "). Returns the end offset
+  /// (position of the closing "), with pos set past it.
   int skipStringBody() {
     while (true) {
       final c = next();
       if (c == 0x22) return pos - 1;
-      if (c == 0x5c) pos++; // escape: pomiń następny bajt (\uXXXX ma 4 hex, ale \ i u wystarczy pominąć, hex nie zawiera ")
+      if (c == 0x5c) {
+        // escape: skip the next byte (\uXXXX has 4 hex digits, but skipping
+        // \ and u is enough, hex never contains ")
+        pos++;
+      }
     }
   }
 
-  /// Rozpoznaje klucz bez tworzenia Stringa.
+  /// Recognizes a key without creating a String.
   int keyCode(int start, int end) {
     final len = end - start;
     final f = b[start];
@@ -195,7 +201,9 @@ class _Scanner {
           var idx = -1;
           if (e - s == 2) {
             final a = b[s] - 65, c = b[s + 1] - 65;
-            if (a >= 0 && a < 26 && c >= 0 && c < 26) idx = _countryLookup[a * 26 + c];
+            if (a >= 0 && a < 26 && c >= 0 && c < 26) {
+              idx = _countryLookup[a * 26 + c];
+            }
           }
           if (idx < 0) throw JsonFormatError('unknown country', s);
           t.countryId[row] = idx;
@@ -238,7 +246,24 @@ class _Scanner {
     return neg ? -v : v;
   }
 
-  static const _pow10 = [1.0, 10.0, 100.0, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15];
+  static const _pow10 = [
+    1.0,
+    10.0,
+    100.0,
+    1e3,
+    1e4,
+    1e5,
+    1e6,
+    1e7,
+    1e8,
+    1e9,
+    1e10,
+    1e11,
+    1e12,
+    1e13,
+    1e14,
+    1e15
+  ];
 
   double parseDouble() {
     final start = pos;
@@ -271,10 +296,15 @@ class _Scanner {
     if (digits == 0) throw JsonFormatError('expected number', pos);
     final c = peek();
     if (c == 0x65 || c == 0x45 || digits > 15) {
-      // Wykładnik lub za dużo cyfr na dokładne int64*10^k: oddaj do double.parse.
+      // Exponent or too many digits for an exact int64*10^k: hand off to double.parse.
       while (pos < b.length) {
         final x = b[pos];
-        if ((x >= 48 && x <= 57) || x == 0x65 || x == 0x45 || x == 0x2b || x == 0x2d || x == 0x2e) {
+        if ((x >= 48 && x <= 57) ||
+            x == 0x65 ||
+            x == 0x45 ||
+            x == 0x2b ||
+            x == 0x2d ||
+            x == 0x2e) {
           pos++;
         } else {
           break;
@@ -303,8 +333,8 @@ class _Scanner {
     throw JsonFormatError('expected bool', pos - 1);
   }
 
-  /// "2024-03-01T10:20:30.123Z" -> epoch ms. Tylko format ISO z 'Z'
-  /// (tak zapisuje `toIso8601String()` dla UTC); inne formaty -> fallback.
+  /// "2024-03-01T10:20:30.123Z" -> epoch ms. Only the ISO format with 'Z'
+  /// (as written by `toIso8601String()` for UTC); other formats -> fallback.
   int parseIsoDateMs() {
     final start = pos;
     int d(int n) {
@@ -316,6 +346,7 @@ class _Scanner {
       }
       return v;
     }
+
     final y = d(4);
     expect(0x2d);
     final m = d(2);
@@ -331,22 +362,27 @@ class _Scanner {
     if (peek() == 0x2e) {
       pos++;
       ms = d(3);
-      // mikrosekundy (opcjonalne) — pomiń
+      // microseconds (optional) — skip
       while (pos < b.length && b[pos] >= 48 && b[pos] <= 57) {
         pos++;
       }
     }
     if (peek() != 0x5a) {
-      // nie UTC 'Z' -> wolna ścieżka
+      // not UTC 'Z' -> slow path
       final e = skipStringBody();
-      pos = e; // cofnij na zamykający cudzysłów (caller zrobi expect)
-      return DateTime.parse(String.fromCharCodes(b, start, e)).millisecondsSinceEpoch;
+      pos = e; // rewind to the closing quote (the caller will do expect)
+      return DateTime.parse(String.fromCharCodes(b, start, e))
+          .millisecondsSinceEpoch;
     }
     pos++; // Z
-    return _daysFromCivil(y, m, day) * 86400000 + hh * 3600000 + mm * 60000 + ss * 1000 + ms;
+    return _daysFromCivil(y, m, day) * 86400000 +
+        hh * 3600000 +
+        mm * 60000 +
+        ss * 1000 +
+        ms;
   }
 
-  // Howard Hinnant, days_from_civil — bez alokacji DateTime.
+  // Howard Hinnant, days_from_civil — without allocating a DateTime.
   static int _daysFromCivil(int y, int m, int d) {
     y -= m <= 2 ? 1 : 0;
     final era = (y >= 0 ? y : y - 399) ~/ 400;
@@ -356,7 +392,7 @@ class _Scanner {
     return era * 146097 + doe - 719468;
   }
 
-  /// Pomija tablicę, zwraca liczbę elementów (dla tagów).
+  /// Skips an array, returns the element count (for tags).
   int skipArrayCount() {
     expect(0x5b);
     ws();
@@ -379,7 +415,7 @@ class _Scanner {
     }
   }
 
-  /// Pomija dowolną wartość JSON (walidując nawiasowanie).
+  /// Skips any JSON value (validating bracket nesting).
   void skipValue() {
     final c = peek();
     switch (c) {

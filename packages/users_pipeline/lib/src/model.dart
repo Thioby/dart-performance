@@ -1,6 +1,6 @@
-/// Idiomatyczny model danych — tak wygląda 95 % aplikacji Dart/Flutter.
-/// Każdy `User` to ~10 obiektów na stercie (sam obiekt, 6 Stringów, DateTime,
-/// lista tagów, Address). 10 000 użytkowników = ~100 000 obiektów.
+/// Idiomatic data model — this is what 95 % of Dart/Flutter apps look like.
+/// Each `User` is ~10 heap objects (the object itself, 6 Strings, DateTime,
+/// the tag list, Address). 10 000 users = ~100 000 objects.
 library;
 
 class Address {
@@ -88,7 +88,7 @@ class User {
       };
 }
 
-/// Parametry filtra używane przez wszystkie warianty.
+/// Filter parameters used by all variants.
 class UserQuery {
   final String country;
   final int minAge;
@@ -110,17 +110,17 @@ class UserQuery {
       UserQuery(createdAfter: DateTime.utc(2021, 1, 1));
 }
 
-/// Wynik pipeline'u — w tej samej postaci dla każdego wariantu, żeby test
-/// mógł sprawdzić, że wszystkie liczą to samo.
+/// Pipeline result — in the same shape for every variant, so the test
+/// can check that they all compute the same thing.
 class PipelineResult {
-  /// Pełne imiona top N dopasowanych użytkowników (score malejąco, przy
-  /// równym score — id rosnąco).
+  /// Full names of the top N matching users (score descending, ties
+  /// broken by id ascending).
   final List<String> topNames;
 
-  /// Liczba aktywnych użytkowników per kraj (posortowana po kodzie kraju).
+  /// Number of active users per country (sorted by country code).
   final Map<String, int> activePerCountry;
 
-  /// Zakodowana odpowiedź (top N jako JSON).
+  /// Encoded response (top N as JSON).
   final List<int> encoded;
 
   const PipelineResult(this.topNames, this.activePerCountry, this.encoded);

@@ -1,6 +1,6 @@
-/// Wariant 🐢 "jak każdy": tak wygląda typowa warstwa danych w aplikacji
-/// Flutter — i nie jest to zły kod. Jest po prostu napisany bez myślenia
-/// o tym, co dzieje się na stercie.
+/// The 🐢 "like everyone does it" variant: this is what a typical data layer in a
+/// Flutter app looks like — and it is not bad code. It is simply written without
+/// thinking about what happens on the heap.
 library;
 
 import 'dart:convert';
@@ -13,7 +13,7 @@ List<User> decodeSlow(String body) {
   return list.map((e) => User.fromJson(e as Map<String, dynamic>)).toList();
 }
 
-/// where/sort/take/map — idiomatyczne łańcuchy kolekcji.
+/// where/sort/take/map — idiomatic collection chains.
 PipelineResult querySlow(List<User> users, UserQuery q) {
   final matching = users
       .where((u) =>

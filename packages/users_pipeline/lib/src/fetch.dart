@@ -1,9 +1,9 @@
-/// Pobieranie danych: 🐢 `package:http` i `response.body` (String) vs
+/// Fetching data: 🐢 `package:http` and `response.body` (String) vs
 /// 🚀 `HttpClient` + `BytesBuilder(copy: false)` -> `Uint8List`.
 ///
-/// Domyślny URL to surowy plik z tego repozytorium na GitHubie (odpowiednik
-/// gista); można podać własny gist przez `--url`. Gdy sieć nie działa,
-/// `loadLocal` czyta `packages/users_pipeline/data/users_10k.json`.
+/// The default URL is a raw file from this repository on GitHub (the equivalent
+/// of a gist); a custom gist can be passed via `--url`. When the network is down,
+/// `loadLocal` reads `packages/users_pipeline/data/users_10k.json`.
 library;
 
 import 'dart:io';
@@ -14,9 +14,9 @@ import 'package:http/http.dart' as http;
 const defaultUsersUrl =
     'https://raw.githubusercontent.com/Thioby/dart-performance/claude/dreamy-cerf-viyne8/packages/users_pipeline/data/users_10k.json';
 
-/// 🐢 Tak robi większość kodu: `http.get` i `response.body`.
-/// `body` dekoduje UTF-8 do Stringa (2 MB UTF-16 = 4 MB), mimo że zaraz
-/// `jsonDecode` i tak przejdzie po każdym znaku.
+/// 🐢 This is what most code does: `http.get` and `response.body`.
+/// `body` decodes UTF-8 into a String (2 MB UTF-16 = 4 MB), even though
+/// `jsonDecode` is about to walk every character anyway.
 Future<String> fetchBodyString(Uri url) async {
   final response = await http.get(url);
   if (response.statusCode != 200) {
@@ -25,8 +25,8 @@ Future<String> fetchBodyString(Uri url) async {
   return response.body;
 }
 
-/// 🚀 Strumień bajtów składany bez kopii per fragment; wynik `Uint8List`
-/// idzie prosto do fused dekodera albo do parsera bajtowego.
+/// 🚀 Byte stream assembled without a copy per chunk; the resulting `Uint8List`
+/// goes straight to the fused decoder or to the byte parser.
 Future<Uint8List> fetchBytes(Uri url, {HttpClient? client}) async {
   final c = client ?? HttpClient();
   try {
@@ -45,8 +45,8 @@ Future<Uint8List> fetchBytes(Uri url, {HttpClient? client}) async {
   }
 }
 
-/// `package:http` też potrafi oddać bajty — `bodyBytes` zamiast `body`.
-/// Minimalna zmiana w istniejącym kodzie, która usuwa 4 MB Stringa.
+/// `package:http` can also return bytes — `bodyBytes` instead of `body`.
+/// A minimal change to existing code that removes the 4 MB String.
 Future<Uint8List> fetchBodyBytes(Uri url) async {
   final response = await http.get(url);
   if (response.statusCode != 200) {

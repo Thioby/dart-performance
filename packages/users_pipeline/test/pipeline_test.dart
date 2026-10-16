@@ -7,12 +7,14 @@ import 'package:users_pipeline/users_pipeline.dart';
 void main() {
   final bytes = generateUsersJson(2000, seed: 7);
 
-  test('generator jest deterministyczny', () {
-    expect(generateUsersJson(100, seed: 1), equals(generateUsersJson(100, seed: 1)));
-    expect(generateUsersJson(100, seed: 1), isNot(equals(generateUsersJson(100, seed: 2))));
+  test('generator is deterministic', () {
+    expect(generateUsersJson(100, seed: 1),
+        equals(generateUsersJson(100, seed: 1)));
+    expect(generateUsersJson(100, seed: 1),
+        isNot(equals(generateUsersJson(100, seed: 2))));
   });
 
-  test('skaner bajtowy odczytuje te same pola co jsonDecode', () {
+  test('byte scanner reads the same fields as jsonDecode', () {
     final t = decodeColumnar(bytes);
     final list = jsonDecode(utf8.decode(bytes)) as List;
     expect(t.length, list.length);
@@ -25,7 +27,8 @@ void main() {
       expect(t.isPremium(i), m['premium']);
       expect(t.score[i], (m['score'] as num).toDouble());
       expect(t.balance[i], (m['balance'] as num).toDouble());
-      expect(t.createdAtMs[i], DateTime.parse(m['createdAt'] as String).millisecondsSinceEpoch);
+      expect(t.createdAtMs[i],
+          DateTime.parse(m['createdAt'] as String).millisecondsSinceEpoch);
       expect(t.tagCount[i], (m['tags'] as List).length);
       expect(t.username(i), m['username']);
       expect(t.email(i), m['email']);
@@ -35,12 +38,14 @@ void main() {
     }
   });
 
-  test('wszystkie warianty dają ten sam wynik', () {
+  test('all variants produce the same result', () {
     assertVariantsAgree(bytes);
-    assertVariantsAgree(bytes, query: UserQuery(createdAfter: DateTime.utc(2019), country: 'DE', top: 10));
+    assertVariantsAgree(bytes,
+        query: UserQuery(
+            createdAfter: DateTime.utc(2019), country: 'DE', top: 10));
   });
 
-  test('pack/unpack zachowuje dane', () {
+  test('pack/unpack preserves data', () {
     final t = decodeColumnar(bytes);
     final u = UserTable.unpack(t.packContiguous().buffer);
     expect(u.length, t.length);
@@ -51,7 +56,7 @@ void main() {
     }
   });
 
-  test('skaner pomija nieznane pola i obsługuje escape/unicode', () {
+  test('scanner skips unknown fields and handles escape/unicode', () {
     final json = utf8.encode(
         '[{"id":1,"extra":{"a":[1,2,{"b":null}],"c":"x\\"y"},"firstName":"Zo\\u00eb \\"Q\\"","lastName":"Łukasz",'
         '"username":"u","email":"e","age":30,"country":"PL","city":"c","isActive":true,"premium":false,'
@@ -62,11 +67,14 @@ void main() {
     expect(t.lastName(0), 'Łukasz');
     expect(t.score[0], 15.0);
     expect(t.balance[0], -2.25);
-    expect(t.createdAtMs[0], DateTime.utc(2024, 2, 29, 23, 59, 59, 999).millisecondsSinceEpoch);
+    expect(t.createdAtMs[0],
+        DateTime.utc(2024, 2, 29, 23, 59, 59, 999).millisecondsSinceEpoch);
   });
 
-  test('skaner odrzuca zepsuty JSON', () {
-    expect(() => decodeColumnar(Uint8List.fromList(utf8.encode('[{"id":1,}]'))), throwsFormatException);
-    expect(() => decodeColumnar(Uint8List.fromList(utf8.encode('[{"id":1}'))), throwsFormatException);
+  test('scanner rejects broken JSON', () {
+    expect(() => decodeColumnar(Uint8List.fromList(utf8.encode('[{"id":1,}]'))),
+        throwsFormatException);
+    expect(() => decodeColumnar(Uint8List.fromList(utf8.encode('[{"id":1}'))),
+        throwsFormatException);
   });
 }

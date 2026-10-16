@@ -1,6 +1,6 @@
-/// Benchmark "pobierz 10k użytkowników i przefiltruj" — CLI.
+/// Benchmark "fetch 10k users and filter them" — CLI.
 ///
-///   dart run bin/users_bench.dart                 # pobiera z GitHuba (raw), fallback: data/users_10k.json
+///   dart run bin/users_bench.dart                 # fetches from GitHub (raw), fallback: data/users_10k.json
 ///   dart run bin/users_bench.dart --url https://gist.githubusercontent.com/.../users.json
 ///   dart run bin/users_bench.dart --file data/users_10k.json --no-isolates
 ///   dart run bin/users_bench.dart --md out.md
@@ -30,15 +30,15 @@ Future<void> main(List<String> args) async {
       case '--samples':
         samples = int.parse(args[++i]);
       default:
-        stderr.writeln('nieznany argument: ${args[i]}');
+        stderr.writeln('unknown argument: ${args[i]}');
         exit(2);
     }
   }
 
   final mode = Platform.script.path.endsWith('.dart') ? 'JIT' : 'AOT';
-  stdout.writeln('Dart ${Platform.version.split(' ').first}, tryb $mode');
+  stdout.writeln('Dart ${Platform.version.split(' ').first}, mode $mode');
 
-  // ---- 1. Fetch (sieć mierzona osobno, bo jej szum to nie nasz kod)
+  // ---- 1. Fetch (network measured separately, because its noise is not our code)
   var bytes = <int>[] as dynamic;
   if (url != null) {
     final uri = Uri.parse(url);
@@ -46,39 +46,44 @@ Future<void> main(List<String> args) async {
       final sw = Stopwatch()..start();
       final body = await fetchBodyString(uri);
       sw.stop();
-      stdout.writeln('fetch 🐢 http.get().body (String):      ${sw.elapsedMilliseconds} ms, ${body.length} znaków');
+      stdout.writeln(
+          'fetch 🐢 http.get().body (String):      ${sw.elapsedMilliseconds} ms, ${body.length} chars');
       sw
         ..reset()
         ..start();
       final b1 = await fetchBodyBytes(uri);
       sw.stop();
-      stdout.writeln('fetch 🚀 http.get().bodyBytes:          ${sw.elapsedMilliseconds} ms, ${b1.length} B');
+      stdout.writeln(
+          'fetch 🚀 http.get().bodyBytes:          ${sw.elapsedMilliseconds} ms, ${b1.length} B');
       sw
         ..reset()
         ..start();
       bytes = await fetchBytes(uri);
       sw.stop();
-      stdout.writeln('fetch 🚀 HttpClient+BytesBuilder:       ${sw.elapsedMilliseconds} ms, ${bytes.length} B');
-      stdout.writeln('źródło: $url');
+      stdout.writeln(
+          'fetch 🚀 HttpClient+BytesBuilder:       ${sw.elapsedMilliseconds} ms, ${bytes.length} B');
+      stdout.writeln('source: $url');
     } catch (e) {
-      stderr.writeln('pobieranie nie powiodło się ($e); używam pliku lokalnego');
+      stderr.writeln('fetch failed ($e); using the local file');
       bytes = null;
     }
   }
   if (bytes == null || url == null) {
     final path = file ?? _findLocal();
     bytes = loadLocal(path);
-    stdout.writeln('źródło: $path (${bytes.length} B)');
+    stdout.writeln('source: $path (${bytes.length} B)');
   }
 
-  // ---- 2. Sanity: wszystkie warianty liczą to samo
+  // ---- 2. Sanity: all variants compute the same thing
   assertVariantsAgree(bytes);
-  stdout.writeln('warianty zgodne ✔  (filtr: ${UserQuery.standard.country}, wiek ${UserQuery.standard.minAge}–${UserQuery.standard.maxAge}, '
-      'score ≥ ${UserQuery.standard.minScore}, aktywni premium, top ${UserQuery.standard.top})');
+  stdout.writeln(
+      'variants agree ✔  (filter: ${UserQuery.standard.country}, age ${UserQuery.standard.minAge}–${UserQuery.standard.maxAge}, '
+      'score ≥ ${UserQuery.standard.minScore}, active premium, top ${UserQuery.standard.top})');
   stdout.writeln('');
 
   // ---- 3. CPU
-  final results = runUsersBenchmark(bytes, samples: samples, onResult: (t) => stdout.writeln('  $t'));
+  final results = runUsersBenchmark(bytes,
+      samples: samples, onResult: (t) => stdout.writeln('  $t'));
   if (isolates) {
     stdout.writeln('');
     results.addAll(await runIsolateBenchmark(bytes));
@@ -87,30 +92,40 @@ Future<void> main(List<String> args) async {
     }
   }
 
-  // ---- 4. Podsumowanie
+  // ---- 4. Summary
   stdout.writeln('');
-  final slow = results.firstWhere((t) => t.stage == 'end-to-end' && t.variant.startsWith('1'));
-  final fast = results.firstWhere((t) => t.stage == 'end-to-end' && t.variant.startsWith('4'));
-  stdout.writeln('end-to-end: ${slow.medianMs.toStringAsFixed(1)} ms -> ${fast.medianMs.toStringAsFixed(1)} ms '
+  final slow = results
+      .firstWhere((t) => t.stage == 'end-to-end' && t.variant.startsWith('1'));
+  final fast = results
+      .firstWhere((t) => t.stage == 'end-to-end' && t.variant.startsWith('4'));
+  stdout.writeln(
+      'end-to-end: ${slow.medianMs.toStringAsFixed(1)} ms -> ${fast.medianMs.toStringAsFixed(1)} ms '
       '(${(slow.medianMs / fast.medianMs).toStringAsFixed(1)}x)');
 
   if (md != null) {
     final sb = StringBuffer()
-      ..writeln('# users pipeline ($mode, Dart ${Platform.version.split(' ').first})')
+      ..writeln(
+          '# users pipeline ($mode, Dart ${Platform.version.split(' ').first})')
       ..writeln()
-      ..writeln('| Etap | Wariant | mediana ms | min | max |')
+      ..writeln('| Stage | Variant | median ms | min | max |')
       ..writeln('|---|---|---:|---:|---:|');
     for (final t in results) {
-      sb.writeln('| ${t.stage} | ${t.variant} | ${t.medianMs.toStringAsFixed(2)} | ${t.minMs.toStringAsFixed(2)} | ${t.maxMs.toStringAsFixed(2)} |');
+      sb.writeln(
+          '| ${t.stage} | ${t.variant} | ${t.medianMs.toStringAsFixed(2)} | ${t.minMs.toStringAsFixed(2)} | ${t.maxMs.toStringAsFixed(2)} |');
     }
     File(md).writeAsStringSync(sb.toString());
-    stdout.writeln('zapisano $md');
+    stdout.writeln('saved $md');
   }
 }
 
 String _findLocal() {
-  for (final p in ['data/users_10k.json', 'packages/users_pipeline/data/users_10k.json', '../packages/users_pipeline/data/users_10k.json']) {
+  for (final p in [
+    'data/users_10k.json',
+    'packages/users_pipeline/data/users_10k.json',
+    '../packages/users_pipeline/data/users_10k.json'
+  ]) {
     if (File(p).existsSync()) return p;
   }
-  throw StateError('brak data/users_10k.json — uruchom: dart run bin/generate.dart');
+  throw StateError(
+      'missing data/users_10k.json — run: dart run bin/generate.dart');
 }

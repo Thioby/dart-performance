@@ -1,4 +1,4 @@
-/// Generuje data/users_10k.json (deterministycznie, seed 42).
+/// Generates data/users_10k.json (deterministically, seed 42).
 ///   dart run bin/generate.dart [count] [out]
 library;
 
@@ -13,5 +13,6 @@ void main(List<String> args) {
   File(out)
     ..parent.createSync(recursive: true)
     ..writeAsBytesSync(bytes);
-  stdout.writeln('zapisano $out: $count użytkowników, ${(bytes.length / 1024).toStringAsFixed(0)} KB');
+  stdout.writeln(
+      'saved $out: $count users, ${(bytes.length / 1024).toStringAsFixed(0)} KB');
 }

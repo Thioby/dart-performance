@@ -1,10 +1,10 @@
 name: users_pipeline
 description: >-
-  Realistyczny benchmark "pobierz 10k użytkowników jako JSON, zdekoduj,
-  przefiltruj, posortuj, zakoduj" w czterech wariantach: od idiomatycznego
-  (http + jsonDecode + fromJson + where/map/toList) do kolumnowego parsera
-  bajtowego bez drzewa pośredniego. Czysty Dart; używany przez CLI
-  (benchmarks/) i aplikację Flutter (flutter_bench/).
+  Realistic benchmark "fetch 10k users as JSON, decode, filter, sort,
+  encode" in four variants: from idiomatic (http + jsonDecode + fromJson +
+  where/map/toList) to a columnar byte parser with no intermediate tree.
+  Pure Dart; used by the CLI (benchmarks/) and the Flutter app
+  (flutter_bench/).
 version: 1.0.0
 publish_to: none
 
