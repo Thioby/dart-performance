@@ -1,22 +1,22 @@
 ---
 name: dart-zero-alloc
-description: Refaktoryzacja kodu Dart do stylu zero-allocation - typed data (Uint8List/Float64List/ByteData) zamiast List<Object>, Struct-of-Arrays, pule i reużywalne bufory, ręczne pisanie JSON/tekstu jako bajtów, parsowanie protokołów po bajtach bez Stringów. Użyj, gdy trzeba usunąć alokacje z pętli klatki, parsera, serializatora lub obsługi socketu, albo gdy profil pokazuje częste scavenge/GC.
+description: Refaktoryzacja kodu Dart do stylu zero-allocation - typed data (Uint8List/Float64List/ByteData) zamiast List<Object>, Struct-of-Arrays, extension types nad indeksami, pule obiektów i reużywalne bufory, zapis JSON/tekstu bezpośrednio jako bajty, parsowanie protokołów na poziomie bajtów bez Stringów, tabele kolumnowe dla dużych payloadów JSON. Użyj, gdy trzeba usunąć alokacje z pętli klatki, parsera, serializatora lub handlera socketu, albo gdy profil pokazuje częste scavenge/GC.
 ---
 
-> 🇵🇱 Wersja polska (referencyjna; aktywny plik skilla to angielski `SKILL.md` w tym katalogu).
+> 🇵🇱 Wersja polska (referencyjna; aktywny plik skilla to angielski `SKILL.md` w tym katalogu). Samowystarczalna: działa w dowolnym projekcie Dart/Flutter.
 
-# dart-zero-alloc — przepisy na kod bez alokacji w hot path
+# dart-zero-alloc — przepisy na hot path bez alokacji
 
-Cel: w gorącej ścieżce **zero** nowych obiektów na stercie Darta poza tym, co musi wyjść na zewnątrz. Każdy przepis ma wariant 🐢 (idiomatyczny) i 🚀 (zero-alloc), zmierzony w `benchmarks/` (AOT, Dart 3.13). Teoria: `docs/dart-flutter-extreme-performance-guide.md` §1.
+Cel: w hot path **zero** nowych obiektów na heapie Darta poza tym, co musi opuścić funkcję. Każdy przepis ma wariant 🐢 (idiomatyczny) i 🚀 (zero-alloc) z referencyjnym zyskiem (Dart 3.13, AOT, x64). Mierz w swoim projekcie przed i po (skill `dart-benchmark`).
 
 ## Zasady VM, które to uzasadniają
 
-- Slot `List<T>` = tagowane słowo (8 B); `double` w kontekście generycznym = obiekt 16 B na stercie; `int` > 2^62 = Mint na stercie.
-- `Float64List`/`Int32List`/`Uint8List` = surowe bajty, bez boxingu, bez bariery zapisu (zapisujesz bajty, nie wskaźniki).
-- Scavenge new space jest stop-the-world: koszt ∝ liczba *żywych* młodych obiektów + remembered set. 10k obiektów/klatkę = jank.
-- Top-level/`static final` z inicjalizatorem = leniwy getter; **kopiuj do lokalnej przed pętlą**.
+- Slot `List<T>` = tagowane słowo (8 B); `double` w kontekście generycznym = 16 B obiekt na heapie; `int` > 2^62 = Mint na heapie.
+- `Float64List`/`Int32List`/`Uint8List` = surowe bajty, bez boxingu, bez write barrier (zapisujesz bajty, nie wskaźniki).
+- Scavenge new space jest stop-the-world: koszt ∝ liczba *żywych* młodych obiektów + remembered set. 10k obiektów per klatka = jank.
+- Top-level/`static final` z inicjalizatorem = leniwy getter; **skopiuj do zmiennej lokalnej przed pętlą** (~2.3×).
 
-## Przepis 1: Struct-of-Arrays zamiast `List<Obj>` (14×)
+## Przepis 1: Struct-of-Arrays zamiast `List<Obj>` (~14×)
 
 ```dart
 // 🐢
@@ -31,7 +31,7 @@ void step(Float64List x, Float64List vx, double dt) {
 }
 ```
 
-Mieszane typy → `ByteData` z offsetami i stałym `Endian.little`:
+Typy mieszane → `ByteData` z offsetami i stałym `Endian.little` (pozwala VM zwinąć gałąź kolejności bajtów):
 
 ```dart
 const rec = 16;                                  // int32 id | f64 score | u8 flags | pad
@@ -40,11 +40,23 @@ int id(int i) => bd.getInt32(i * rec, Endian.little);
 double score(int i) => bd.getFloat64(i * rec + 4, Endian.little);
 ```
 
-Gdy potrzebujesz API „obiektowego”, użyj `extension type` na indeksie (zero alokacji, czytelny kod):
+API "jak obiekt" bez obiektów — `extension type` nad indeksem (Dart 3.3+):
 
 ```dart
 extension type const Particle(int i) {
   double get x => _x[i]; set x(double v) => _x[i] = v;
+  void step(double dt) => x += _vx[i] * dt;      // kompiluje się do: _x[i] += _vx[i] * dt
+}
+```
+
+Tabela kolumnowa dla rekordów z JSON/DB: typowane kolumny dla liczb i flag, stringi trzymane jako `(offset, length)` w oryginalnym buforze bajtów i dekodowane leniwie tylko dla wierszy, które pokazuje UI:
+
+```dart
+class Table {
+  final Uint8List raw;                      // oryginalny payload — źródło do leniwego dekodowania stringów
+  final Int32List id, nameOff, nameLen; final Float64List score; final Uint8List flags;
+  int length = 0;
+  String name(int i) => String.fromCharCodes(raw, nameOff[i], nameOff[i] + nameLen[i]); // szybka ścieżka ASCII; w przeciwnym razie utf8.decode
 }
 ```
 
@@ -55,10 +67,10 @@ extension type const Particle(int i) {
 final out = <double>[]; for (...) out.add(v);
 // 🚀
 final out = Float64List(count); var j = 0; for (...) out[j++] = v;
-// gdy count nieznany: dwa przebiegi (policz, wypełnij) — nadal szybsze niż growable z boxingiem
+// nieznana liczba: dwa przebiegi (zlicz, wypełnij) — nadal szybciej niż growable z boxingiem
 ```
 
-## Przepis 3: `where().map().toList()` → pętla (4.6×)
+## Przepis 3: `where().map().toList()` → pętla (~4.6×)
 
 ```dart
 // 🐢
@@ -69,11 +81,14 @@ final r = Int32List(c); var j = 0;
 for (var i = 0; i < data.length; i++) { final v = data[i]; if (v.isEven) r[j++] = v * 2; }
 ```
 
-## Przepis 4: Histogram / lookup → typed array (10.8×)
+Pułapka leniwości: `final evens = data.where(...)` uruchamia filtr ponownie przy każdym `length`/`first`/iteracji — zmaterializuj raz (`toList(growable: false)`) albo napisz pętlę.
+
+## Przepis 4: Histogram / lookup / top-N → tablice typowane (~10×)
 
 ```dart
 // 🐢  final m = <int,int>{}; m[k] = (m[k] ?? 0) + 1;
 // 🚀  final h = Int32List(range); h[k]++;
+// top-N z dużego zbioru: min-heap rozmiaru N w Int32List indeksów zamiast sortowania wszystkiego
 ```
 
 ## Przepis 5: Reużywalny bufor wyjściowy (ByteWriter)
@@ -84,17 +99,34 @@ class ByteWriter {
   void reset() => _len = 0;
   void _grow(int extra) { if (_len + extra <= _buf.length) return;
     final nb = Uint8List((_len + extra) * 2); nb.setRange(0, _len, _buf); _buf = nb; }
-  void ascii(String s) { _grow(s.length); for (var i = 0; i < s.length; i++) _buf[_len++] = s.codeUnitAt(i); }
   void byte(int c) { _grow(1); _buf[_len++] = c; }
-  void integer(int v) { /* cyfry od końca, bez toString — patrz benchmarks/lib/src/bench_json.dart */ }
-  void jsonString(Uint8List utf8) { /* escapuj tylko " \ i < 0x20; reszta bajt po bajcie */ }
-  Uint8List view() => Uint8List.sublistView(_buf, 0, _len);   // ważny do reset()
+  void ascii(String s) { _grow(s.length); for (var i = 0; i < s.length; i++) { _buf[_len++] = s.codeUnitAt(i); } }
+  void integer(int v) {                                   // cyfry od końca, bez toString
+    if (v == 0) { byte(0x30); return; }
+    if (v < 0) { byte(0x2d); v = -v; }
+    var digits = 0; for (var t = v; t > 0; t ~/= 10) { digits++; }
+    _grow(digits); var p = _len + digits - 1;
+    while (v > 0) { _buf[p--] = 0x30 + v % 10; v ~/= 10; }
+    _len += digits;
+  }
+  void jsonString(Uint8List s) {                          // escapuj tylko " \ i < 0x20
+    _grow(s.length * 6 + 2); final b = _buf; var n = _len; b[n++] = 0x22;
+    for (var i = 0; i < s.length; i++) {
+      final c = s[i];
+      if (c >= 0x20 && c != 0x22 && c != 0x5c) { b[n++] = c; }
+      else if (c == 0x22 || c == 0x5c) { b[n++] = 0x5c; b[n++] = c; }
+      else { const hex = '0123456789abcdef'; b[n++] = 0x5c; b[n++] = 0x75; b[n++] = 0x30; b[n++] = 0x30;
+             b[n++] = hex.codeUnitAt(c >> 4); b[n++] = hex.codeUnitAt(c & 15); }
+    }
+    b[n++] = 0x22; _len = n;
+  }
+  Uint8List view() => Uint8List.sublistView(_buf, 0, _len);   // ważne do reset()
 }
 ```
 
-Jedna instancja per izolat/połączenie/painter. Wynik `view()` wysyłasz do socketu / `canvas` / FFI; kopiujesz (`Uint8List.fromList(view())`) tylko gdy musi przeżyć `reset()`. Benchmark: feed 20 postów → 6.5 µs vs 60 µs `jsonEncode`+`utf8.encode` (9.3×).
+Jedna instancja per izolat/połączenie/painter. Wyślij `view()` do socketu / `canvas` / FFI; kopiuj tylko wtedy, gdy wynik musi przeżyć `reset()`. Referencja: odpowiedź JSON z 20 rekordami → ~6.5 µs vs ~60 µs dla `jsonEncode`+`utf8.encode` (~9×). Jeśli stringi przyszły jako JSON, są już zescapowane — kopiuj surowe bajty dosłownie.
 
-## Przepis 6: JSON bajtowo bez własnego writera (1.6×)
+## Przepis 6: JSON jako bajty bez własnego writera (~1.6×)
 
 ```dart
 final _enc = JsonUtf8Encoder();                   // raz
@@ -103,43 +135,66 @@ final _dec = utf8.decoder.fuse(json.decoder);     // raz
 final v = _dec.convert(bytes);
 ```
 
-## Przepis 7: Składanie fragmentów ze strumienia (100–400×)
+Znaj granicę: na payloadzie z 10k rekordów fused decoder daje ~30 %; resztę kosztuje drzewo i `fromJson`. Dla jednego wysokowolumenowego endpointu skaner bajtowy prosto do tabeli kolumnowej (przepis 1) daje ~7× end-to-end: rozpoznawaj klucze po długości + pierwszym bajcie, parsuj liczby/daty ręcznie, stringi trzymaj jako offsety, `skipValue()` dla nieznanych pól, waliduj względem `jsonDecode` testem różnicowym.
+
+## Przepis 7: Składanie chunków ze strumienia (100–400×)
 
 ```dart
-// 🐢  buf = Uint8List(buf.length + data.length)..setRange(...)   // kopia per fragment, O(n^2)
+// 🐢  buf = Uint8List(buf.length + data.length)..setRange(...)   // kopia per chunk, O(n^2)
 // 🚀 a) nieznany rozmiar:
 final bb = BytesBuilder(copy: false); stream.listen(bb.add); final all = bb.takeBytes();
-// 🚀 b) znany górny limit (protokół z ramkami): prealokowany bufor + offset
+// 🚀 b) znana górna granica (protokół ramkowy): prealokowany bufor + offset
 final buf = Uint8List(1 << 16); var n = 0;
-void onData(Uint8List d) { buf.setRange(n, n + d.length, d); n += d.length; parse(Uint8List.sublistView(buf, 0, n)); }
+void onData(Uint8List d) {
+  buf.setRange(n, n + d.length, d); n += d.length;
+  final used = parse(Uint8List.sublistView(buf, 0, n));            // skonsumowane bajty
+  if (used > 0) { buf.setRange(0, n - used, buf, used); n -= used; }  // memmove ogona, w miejscu
+}
 ```
 
-Po sparsowaniu ramki przesuwaj resztę `buf.setRange(0, n - used, buf, used)` (memmove w miejscu) zamiast tworzyć nowy bufor.
+## Przepis 8: Parser protokołu na poziomie bajtów (~4×)
 
-## Przepis 8: Parser protokołu po bajtach (4×)
-
-Nie dekoduj do `String`. Porównuj nagłówki po długości i pierwszym bajcie, potem `_ieq` (case-insensitive po `| 0x20`). Wynik to offsety w reużywanym obiekcie/`Int32List`, nie `Map<String,String>`. Wzór: `_parseBytes` w `benchmarks/lib/src/bench_buffers.dart` i `_parseHead` w `dart-rawsocket-C-Hatton/bin/server.dart`.
+Nie dekoduj do `String`. Porównuj nazwy nagłówków/kluczy po długości i pierwszym bajcie, a potem porównaniem bajtów bez rozróżniania wielkości liter przez `| 0x20`. Wynikiem są offsety w reużywanym obiekcie/`Int32List`, nie `Map<String,String>`.
 
 ```dart
+bool _ieq(Uint8List b, int s, String name) {
+  for (var k = 0; k < name.length; k++) { if ((b[s + k] | 0x20) != name.codeUnitAt(k)) return false; }
+  return true;
+}
 if (nameLen == 14 && (b[ls] | 0x20) == 0x63 /* c */ && _ieq(b, ls, 'content-length')) { ... }
 ```
 
 ## Przepis 9: Stringi
 
-- `s += x` w pętli → `StringBuffer` (3.6×). Gdy wynik idzie do I/O → od razu bajty (10×).
-- `substring` kopiuje (Dart VM nie ma sliced strings) — trzymaj offsety do oryginału.
-- ASCII z bajtów: `String.fromCharCodes(bytes, start, end)` jest szybsze niż `utf8.decode` dla czystego ASCII (sprawdź `(c & ~0x7F) == 0` jak FlatBuffers `_tryWriteASCIIString`).
+- `s += x` w pętli → `StringBuffer` (~3.6×). Gdy wynik idzie do I/O → od razu bajty (~10×).
+- `substring` kopiuje (Dart VM nie ma sliced strings) — trzymaj offsety w oryginale.
+- ASCII z bajtów: `String.fromCharCodes(bytes, start, end)` bije `utf8.decode` dla czystego ASCII (najpierw sprawdź `(c & ~0x7F) == 0`).
+- `toLowerCase()` do porównania alokuje — porównuj przez `| 0x20`.
 
 ## Przepis 10: Stałe i `const`
 
-Wszystko, co jest stałe w czasie życia programu — `const` (zero alokacji, old space, bez bariery zapisu). Odpowiedzi błędów, nagłówki, `EdgeInsets`, `TextStyle`, puste listy `const []`. Readery/konwertery jako `const` obiekty (FlatBuffers: „read speed up by about 10 % … `const` constructors of FB readers”).
+Wszystko stałe przez cały czas życia programu — `const` (zero alokacji, old space, bez write barrier). Odpowiedzi błędów, nagłówki, `EdgeInsets`, `TextStyle`, puste listy `const []`. Readery/konwertery jako obiekty `const`.
+
+## Przepis 11: Pula obiektów, gdy obiektów nie da się spłaszczyć
+
+```dart
+class TouchEvent { double x = 0, y = 0; }
+final _pool = List.generate(256, (_) => TouchEvent(), growable: false);
+var _used = 0;
+TouchEvent acquire() => _pool[_used++];              // powiększ/rzuć wyjątek, gdy _used == length
+void endFrame() => _used = 0;                         // "zwolnij" wszystko jednym przypisaniem
+```
+
+Działa tak samo dla `Paint`, `Path` (`path.reset()`), `TextPainter`, buforów `Uint8List`.
 
 ## Weryfikacja
 
-1. `dart run --observe` → DevTools → Memory → Allocation tracing: klasa, którą usuwałeś, powinna zniknąć z listy.
-2. Benchmark z `benchmarks/lib/harness.dart` (`Suite`, `blackHole`) — przed/po, JIT **i** AOT (`tool/run.sh`).
-3. Dla pewności, że double jest unboxed / nie ma `CheckSmi`: `dart compile exe --extra-gen-snapshot-options=--print-flow-graph-optimized,--disassemble --extra-gen-snapshot-options=--print-flow-graph-filter=nazwaFunkcji`.
+1. `dart run --observe` / `flutter run --profile` → DevTools → Memory → Allocation tracing: klasa, którą usunąłeś, powinna zniknąć z listy.
+2. Mikrobenchmark przed/po, JIT **i** AOT (skill `dart-benchmark`).
+3. Aby mieć pewność, że double jest unboxed / nie ma `CheckSmi`: `dart compile exe --extra-gen-snapshot-options=--print-flow-graph-optimized,--disassemble --extra-gen-snapshot-options=--print-flow-graph-filter=functionName`.
 
 ## Kiedy NIE stosować
 
-Kod jednorazowy, kolekcje < ~100 elementów, warstwa UI poza pętlą klatki, testy. Zero-alloc kosztuje czytelność — ogranicz do zmierzonych hot pathów i zamknij w jednej, dobrze nazwanej klasie (`ByteWriter`, `FrameBuffer`, `ParticleStore`).
+Kod jednorazowy, kolekcje < ~100 elementów, warstwy UI poza pętlą klatki, testy. Zero-alloc kosztuje czytelność — ogranicz go do zmierzonych hot pathów i zamknij w jednej dobrze nazwanej klasie (`ByteWriter`, `FrameBuffer`, `ParticleStore`, `UserTable`).
+
+Lektura uzupełniająca z uruchamialnymi benchmarkami: https://github.com/Thioby/dart-performance

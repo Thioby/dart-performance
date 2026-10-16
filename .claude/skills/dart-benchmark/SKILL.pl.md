@@ -1,69 +1,122 @@
 ---
 name: dart-benchmark
-description: Pisanie i uruchamianie rzetelnych mikrobenchmarków Dart z harnessem z tego repo (benchmarks/lib/harness.dart) - rozgrzewka, mediana z prób, blackHole, JIT vs AOT (dart build cli dla pakietów z hookami natywnymi), odczyt wyników i zaglądanie w kod maszynowy (--print-flow-graph-optimized, --disassemble). Użyj, gdy trzeba zmierzyć "czy to jest szybsze", dodać nowy benchmark do benchmarks/, zweryfikować optymalizację liczbami, albo wyjaśnić zaskakujący wynik.
+description: Pisanie i uruchamianie wiarygodnych mikrobenchmarków i benchmarków end-to-end w Darcie w dowolnym projekcie - harness drop-in (warm-up, mediana z próbek, blackHole), JIT vs AOT (dart compile exe / dart build cli dla pakietów z native hooks), różnicowe testy poprawności, czytanie wyników i inspekcja wygenerowanego kodu (--print-flow-graph-optimized, --disassemble). Użyj, gdy coś trzeba zmierzyć ("czy to jest szybsze?"), dodać benchmark do projektu, zweryfikować optymalizację liczbami albo wyjaśnić zaskakujący wynik.
 ---
 
-> 🇵🇱 Wersja polska (referencyjna; aktywny plik skilla to angielski `SKILL.md` w tym katalogu).
+> 🇵🇱 Wersja polska (referencyjna; aktywny plik skilla to angielski `SKILL.md` w tym katalogu). Samowystarczalna: działa w dowolnym projekcie Dart/Flutter.
 
-# dart-benchmark — mierz, zanim wierzysz
+# dart-benchmark — zmierz, zanim uwierzysz
 
-Harness: `benchmarks/lib/harness.dart` (`Suite`, `BenchResult`, `blackHole`, `toMarkdown`). Runner: `benchmarks/bin/run_all.dart`. Skrypt JIT+AOT: `benchmarks/tool/run.sh`. Wyniki referencyjne: `benchmarks/RESULTS.md`.
+## 1. Harness drop-in
 
-## 1. Dodanie benchmarku
+Wrzuć to do `tool/bench/harness.dart` (albo `benchmark/harness.dart`) w projekcie. Bez zależności.
 
-1. Utwórz `benchmarks/lib/src/bench_<temat>.dart` z funkcją `List<Suite> suites()`.
-2. Każdy `Suite` = jedno pytanie, pierwszy `add` = baseline (🐢), kolejne = warianty (🚀). Nazwy mówią *co* jest mierzone i rozmiar danych (`'json/encode feed (20 postów, ~2.6 KB)'`).
-3. Wynik każdej funkcji przepuść przez `blackHole(...)` (`@pragma('vm:never-inline')`), inaczej optymalizator usunie martwy kod.
-4. Dane wejściowe twórz **raz** na poziomie biblioteki i **kopiuj do lokalnej/parametru** przed pętlą (top-level `final` to leniwy getter, 2.3× wolniej — sam ten błąd potrafi odwrócić wynik).
-5. Zarejestruj grupę w `_groups` w `bin/run_all.dart`.
-6. Sprawdź, że warianty dają identyczny wynik (jak `bench_json.dart` porównuje bajty trzech encoderów) — benchmark czegoś, co liczy co innego, jest bezwartościowy.
+```dart
+import 'dart:io';
+import 'dart:math' as math;
 
-Szablon:
+typedef BenchFn = void Function();
+
+class BenchResult {
+  final String suite, name; final double nsPerOp; final List<double> samples;
+  BenchResult(this.suite, this.name, this.nsPerOp, this.samples);
+}
+
+class Suite {
+  final String name; final int sampleMillis, samples; final _cases = <(String, BenchFn, BenchFn?)>[];
+  Suite(this.name, {this.sampleMillis = 300, this.samples = 7});
+  void add(String caseName, BenchFn fn, {BenchFn? setup}) => _cases.add((caseName, fn, setup));
+
+  List<BenchResult> run() {
+    stdout.writeln('\n== $name ==');
+    final out = <BenchResult>[];
+    for (final (caseName, fn, setup) in _cases) {
+      setup?.call();
+      final warm = Stopwatch()..start(); var warmIters = 0;
+      while (warm.elapsedMilliseconds < 100) { fn(); warmIters++; }          // warm-up (JIT go potrzebuje; AOT wyrównuje cache)
+      final nsPerWarmOp = warm.elapsedMicroseconds * 1000 / math.max(1, warmIters);
+      final iters = (sampleMillis * 1e6 / math.max(1, nsPerWarmOp)).round().clamp(1, 1 << 30);
+      final times = <double>[]; final sw = Stopwatch();
+      for (var s = 0; s < samples; s++) {
+        sw..reset()..start();
+        for (var i = 0; i < iters; i++) { fn(); }
+        sw.stop();
+        times.add(sw.elapsedMicroseconds * 1000 / iters);
+      }
+      times.sort();
+      final r = BenchResult(name, caseName, times[times.length ~/ 2], times);   // MEDIANA
+      out.add(r);
+      final base = out.first.nsPerOp / r.nsPerOp;
+      stdout.writeln('  ${caseName.padRight(48)} ${_fmt(r.nsPerOp).padLeft(12)}  '
+          '[min ${_fmt(times.first)}, max ${_fmt(times.last)}]  '
+          '${identical(r, out.first) ? '(baseline)' : '${base.toStringAsFixed(2)}x ${base >= 1 ? 'faster' : 'SLOWER'}'}');
+    }
+    return out;
+  }
+
+  static String _fmt(double ns) => ns < 1e3 ? '${ns.toStringAsFixed(1)} ns'
+      : ns < 1e6 ? '${(ns / 1e3).toStringAsFixed(2)} µs' : '${(ns / 1e6).toStringAsFixed(2)} ms';
+}
+
+/// Utrzymuje wynik przy życiu, żeby optymalizator nie mógł usunąć pracy (jak black_box w Ruście).
+@pragma('vm:never-inline')
+void blackHole(Object? value) { _sink = value; }
+Object? _sink;
+Object? get lastBlackHoleValue => _sink;
+```
+
+Alternatywa: `package:benchmark_harness` (`BenchmarkBase`, raportuje µs per `run()`); nie ma mediany/rozrzutu, więc dodaj własne powtórzenia.
+
+## 2. Pisanie benchmarku
+
+1. Jeden `Suite` = jedno pytanie. Pierwszy `add` to baseline (🐢), reszta to warianty (🚀). Nazwy mówią *co* i jaki rozmiar danych: `'json/encode feed (20 posts, ~2.6 KB)'`.
+2. Każdy wynik przepuszczaj przez `blackHole(...)`, inaczej martwy kod zostanie wyeliminowany i nie zmierzysz nic.
+3. Dane wejściowe twórz **raz**, poza mierzoną funkcją, i **kopiuj do zmiennej lokalnej/parametru** przed pętlą — top-level `final` to leniwy getter (~2.3× wolniej) i samo to może odwrócić wynik.
+4. Sprawdź, że warianty liczą to samo (porównaj bajty/wyjścia w sanity checku w `main()` albo w teście) — szybsza funkcja z inną odpowiedzią to nie wynik.
+5. Dla kodu async (izolaty, I/O) harness jest synchroniczny: mierz N `await`ów `Stopwatch`em, bierz medianę z kilku przebiegów.
 
 ```dart
 import 'dart:typed_data';
-import '../harness.dart';
+import 'harness.dart';
 
 const _n = 10_000;
-final Int32List _data = Int32List.fromList(List.generate(_n, (i) => i));
+final Int32List _data = Int32List.fromList(List.generate(_n, (i) => (i * 7919) % 1000));
 
 int _slow(List<int> d) { var s = 0; for (final v in d) { s += v; } return s; }
 int _fast(Int32List d) { var s = 0; for (var i = 0; i < d.length; i++) { s += d[i]; } return s; }
 
-List<Suite> suites() => [
-  Suite('temat/sum (10k)')
+void main() {
+  Suite('sum (10k)')
     ..add('List<int> for-in', () => blackHole(_slow(_data)))
-    ..add('Int32List indexed', () => blackHole(_fast(_data))),
-];
+    ..add('Int32List indexed', () => blackHole(_fast(_data)))
+    ..run();
+}
 ```
 
-Dla kodu asynchronicznego (izolaty, I/O) harness jest synchroniczny — mierz ręcznie `Stopwatch` wokół N `await`, mediana z prób (wzór: `runIsolateSuite` w `bench_isolates.dart`).
+Benchmarki end-to-end (fetch → decode → filter → encode) znaczą dla decyzji więcej niż mikrobenchmarki: fused decoder JSON daje ~1.2× w izolacji, ale ucina tylko ~30 % na payloadzie z 10k rekordów, bo dominuje drzewo obiektów i `fromJson`. Fetch mierz raz i osobno; szum sieci to nie twój kod.
 
-## 2. Uruchamianie
+## 3. Uruchamianie: JIT i AOT
 
 ```bash
-cd benchmarks && dart pub get
-tool/build_native.sh                          # tylko dla grupy ffi (gcc/clang)
-dart run bin/run_all.dart --only temat        # JIT, szybko
-tool/run.sh                                   # JIT + AOT -> results/jit.md, results/aot.md, *.json
-tool/run.sh temat,json                        # wybrane grupy
+dart run tool/bench/main.dart                 # JIT (tak działają serwery; potrzebuje warm-upu)
+dart compile exe tool/bench/main.dart -o build/bench && ./build/bench     # AOT = tak działa Flutter release
+dart build cli -o build/aot                   # AOT dla pakietów z build hookami native-asset (np. sqlite3 >= 3)
 ```
 
-AOT: pakiety z build hooks (`sqlite3` ≥ 3) nie działają z `dart compile exe` — skrypt używa `dart build cli -o build/aot` i uruchamia `build/aot/bundle/bin/run_all`. Flutter release = AOT, więc **AOT jest wynikiem, który się liczy** dla aplikacji mobilnych; JIT dla serwerów `dart run` i testów.
+**AOT to liczba, która się liczy** dla aplikacji mobilnych. JIT spekuluje na typach (suma `List<int>` jest tak szybka jak `Int32List`), AOT nie (~1.6–2.3× różnicy). Jeśli optymalizacja pomaga tylko w jednym trybie, powiedz w którym.
 
-Harness: rozgrzewka 100 ms → dobór iteracji na ~300 ms próby → 7 prób → **mediana**, plus min/max. Pola `Suite(sampleMillis:, samples:)` zmniejsz dla wolnych operacji (SQLite insert 10k: `sampleMillis: 1, samples: 3`).
+Zmniejsz `Suite(sampleMillis:, samples:)` dla wolnych operacji (np. 10k insertów do bazy: `sampleMillis: 1, samples: 3`). Uruchamiaj na spokojnej maszynie; współdzielony runner CI dodaje ±10 % szumu.
 
-## 3. Czytanie wyników
+## 4. Czytanie wyników
 
 - Porównuj **mediany**, patrz na rozrzut (min–max). Różnica < 10 % przy rozrzucie 20 % = szum, nie wynik.
-- JIT ≠ AOT: JIT spekuluje typy (`List<int>` sum równie szybkie jak `Int32List`), AOT nie (1.6–2.3× różnicy). Jeśli optymalizacja pomaga tylko w jednym trybie, powiedz w którym.
-- Zyski z typed data są największe w **budowaniu** (alokacja, boxing) i zapisie, nie w sekwencyjnym odczycie małych danych mieszczących się w cache.
-- `rssDeltaBytes` w `BenchResult` jest orientacyjny (RSS rośnie też przez GC heap growth); do alokacji użyj DevTools.
-- Zapisz do `RESULTS.md` tylko wyniki z `tool/run.sh` (oba tryby) z datą, wersją Darta, CPU.
+- Zyski z typed data są największe w **budowaniu** (alokacja, boxing) i zapisie, nie w sekwencyjnych odczytach małych danych mieszczących się w cache.
+- Delty RSS są tylko orientacyjne (wzrost heapu GC); do alokacji używaj DevTools Allocation tracing.
+- Zapisuj wyniki z datą, wersją Darta, CPU i trybem (JIT/AOT) i zachowuj surowe liczby per próbka.
 
-## 4. Gdy wynik zaskakuje: zajrzyj w kod
+## 5. Gdy wynik zaskakuje: czytaj kod
 
-Egorov („Microbenchmarks are experiments”): benchmark to eksperyment do interpretacji przez czytanie wygenerowanego kodu, nie wyrok.
+Benchmark to eksperyment do interpretacji przez czytanie wygenerowanego kodu, nie wyrok.
 
 ```bash
 # AOT, jedna funkcja:
@@ -75,15 +128,18 @@ dart compile exe bin/x.dart -o /tmp/x \
 dart --print-flow-graph-optimized --print-flow-graph-filter=_fast --disassemble-optimized --no-background-compilation bin/x.dart
 ```
 
-Czego szukać w IL: `CheckSmi`/`CheckClass` (spekulacja, deopt), `Box`/`Unbox` (boxing double/int), `StoreIndexed ... NoStoreBarrier` (brak bariery — dobrze), `CheckArrayBound` (bounds check niezhoistowany), `CheckStackOverflow` w nagłówku pętli (normalne), wywołania `InitStaticField`/getterów leniwych pól (pułapka z §1), `BinaryInt64Op` zamiast `BinarySmiOp` (unboxed int).
+Czego szukać w IL: `CheckSmi`/`CheckClass` (spekulacja, deopt), `Box`/`Unbox` (boxing double/int), `StoreIndexed ... NoStoreBarrier` (bez bariery — dobrze), `CheckArrayBound` (niewyniesione sprawdzenie zakresu), `CheckStackOverflow` w nagłówku pętli (normalne), `InitStaticField`/wywołania gettera leniwego pola (pułapka z §2), `BinaryInt64Op` zamiast `BinarySmiOp` (unboxed int).
 
-Pragmy diagnostyczne/sterujące (`runtime/docs/pragmas.md`): `@pragma('vm:prefer-inline')`, `vm:never-inline` (zawsze respektowane), `vm:align-loops`; **nie** używaj `vm:unsafe:*` w produkcji bez zgody.
+Pragmy: `@pragma('vm:prefer-inline')`, `vm:never-inline` (zawsze honorowana), `vm:align-loops`; **nie** używaj `vm:unsafe:*` w produkcji bez zgody.
 
-## 5. Typowe błędy benchmarków
+## 6. Typowe błędy w benchmarkach
 
-- Wynik nieużyty → kod usunięty → „0 ns”. Zawsze `blackHole`.
-- Dane tworzone wewnątrz mierzonej funkcji → mierzysz alokację danych, nie algorytm (chyba że to celowo, jak `typed_lists/build`).
-- Jedna próba, brak rozgrzewki (JIT), porównanie JIT z AOT.
-- Pętla o stałej liczbie iteracji, którą kompilator częściowo wylicza w czasie kompilacji → użyj danych z `List.generate` z nietrywialną funkcją lub z pliku.
-- Zmienione warunki między wariantami (różny rozmiar danych, różne wyjście).
-- Porównanie `TransferableTypedData` bez uwzględnienia, że `fromList` kopiuje.
+- Wynik nieużyty → kod usunięty → "0 ns". Zawsze `blackHole`.
+- Dane tworzone wewnątrz mierzonej funkcji → mierzysz alokację danych, nie algorytm (chyba że celowo).
+- Jedna próbka, brak warm-upu (JIT), porównywanie JIT z AOT.
+- Pętla ze stałą liczbą iteracji, którą kompilator częściowo wylicza → używaj danych generowanych albo z pliku.
+- Zmienione warunki między wariantami (inny rozmiar danych, inne wyjście).
+- Porównywanie `TransferableTypedData` bez uwzględnienia kopii w `fromList`.
+- Sieć albo dysk wewnątrz mierzonej sekcji.
+
+Lektura uzupełniająca z uruchamialnymi benchmarkami: https://github.com/Thioby/dart-performance
