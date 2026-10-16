@@ -1076,6 +1076,125 @@ Take `bench_soa.dart` as the model: create a `CustomPainter` that draws 10 000 p
 
 ---
 
+## 6. Case study: 10,000 users from JSON (`packages/users_pipeline`, `flutter_bench/`)
+
+The microbenchmarks in §1–3 show individual techniques. This chapter composes them into the scenario every app has: **fetch a list from an API, decode it, filter it, show it**. Data: 10,000 users (3.3 MB of JSON, 15 fields, a nested address, a tag list, ISO dates, non-ASCII characters, escaped quotes), generated deterministically (`bin/generate.dart`) and served from a raw URL in this repository — the runner really downloads them (`--url` also accepts your own gist), and falls back to the local file when the network is unavailable.
+
+The task: active premium users from PL, aged 25–45, score ≥ 40, account created after 2021, sorted by score, top 100 names; plus the number of active users per country and the top 100 encoded back to JSON.
+
+### 6.1 Variant 1 🐢 — "the way everyone does it" (`pipeline_slow.dart`, `model.dart`)
+
+```dart
+final response = await http.get(url);
+final body = response.body;                                  // 3.3 MB of bytes -> a 6.6 MB UTF-16 String
+List<User> decodeSlow(String body) {
+  final list = jsonDecode(body) as List<dynamic>;           // tree: ~150k Map/List/String
+  return list.map((e) => User.fromJson(e as Map<String, dynamic>)).toList();   // 10k × (User + 6 Strings + DateTime + List + Address)
+}
+PipelineResult querySlow(List<User> users, UserQuery q) {
+  final matching = users.where((u) => u.country == q.country && u.isActive && u.premium &&
+      u.age >= q.minAge && u.age <= q.maxAge && u.score >= q.minScore && u.createdAt.isAfter(q.createdAfter)).toList();
+  matching.sort((a, b) { final c = b.score.compareTo(a.score); return c != 0 ? c : a.id.compareTo(b.id); });
+  final names = matching.take(q.top).map((u) => u.fullName).toList();
+  final perCountry = <String, int>{};
+  for (final u in users) { if (u.isActive) perCountry[u.country] = (perCountry[u.country] ?? 0) + 1; }
+  final encoded = utf8.encode(jsonEncode(matching.take(q.top).map((u) => u.toJson()).toList()));
+  ...
+}
+```
+
+Nothing here is "wrong". `User.fromJson` calls `DateTime.parse` 10,000 times, `(j['tags'] as List).cast<String>()` creates a wrapper, and every `User` is about 10 objects — roughly 250,000 allocations before the first user reaches the screen.
+
+### 6.2 Variant 2 🚀 — the cheap fixes (`decodeFused`, `queryObjects`)
+
+`response.bodyBytes` + `utf8.decoder.fuse(json.decoder)` (no 6.6 MB String), a preallocated `List<User>`, one `for` loop instead of `where/sort/take/map`, an `Int32List` for the group-by, `JsonUtf8Encoder`. **Result: decode 76 → 54 ms.** A lesson the microbenchmarks hide: the UTF-8 decoder is a rounding error; the cost sits in the tree and in `fromJson`. As long as you build 10k model objects, "faster JSON" buys 30 %, not 10×.
+
+### 6.3 Variant 4 🚀🚀 — byte scanner into columns (`json_scanner.dart`, `columnar.dart`)
+
+One pass over the `Uint8List`, no tree. Keys are recognized like HTTP headers in §1.7.6 (length + first byte + comparison), values land directly in typed lists, strings become offsets into the original buffer:
+
+```dart
+class UserTable {
+  final Uint8List raw;                 // the original JSON — the source for lazy string decoding
+  Int32List id; Uint8List age, countryId, flags; Float64List score, balance; Int64List createdAtMs; Uint8List tagCount;
+  Int32List usernameOff, usernameLen, emailOff, emailLen, firstOff, firstLen, lastOff, lastLen, cityOff, cityLen;
+  String firstName(int i) => decodeJsonString(raw, firstOff[i], firstOff[i] + firstLen[i]);   // only for the top 100
+}
+// json_scanner.dart — dispatch on the key without a String
+switch (keyCode(ks, ke)) {
+  case _kId:      t.id[row] = parseInt();
+  case _kScore:   t.score[row] = parseDouble();             // integer mantissa / 10^k, no double.parse
+  case _kActive:  if (parseBool()) t.flags[row] |= flagActive;
+  case _kFirst:   expect(0x22); t.firstOff[row] = pos; t.firstLen[row] = skipStringBody() - t.firstOff[row];
+  case _kCountry: /* 2 letters -> index via a 26×26 table */
+  case _kCreated: expect(0x22); t.createdAtMs[row] = parseIsoDateMs(); expect(0x22);   // days_from_civil, no DateTime
+  case _kTags:    t.tagCount[row] = skipArrayCount();
+  default:        skipValue();                               // unknown fields: syntax-validated and skipped
+}
+```
+
+The query on columns: the filter is comparisons on `Uint8List`/`Float64List`, the top 100 come from a **min-heap** (we never sort 10k, we maintain 100), the group-by is an `Int32List(24)`, and encoding copies the raw string bytes (they are already correctly escaped in the source):
+
+```dart
+for (var i = 0; i < n; i++) {
+  final f = flags[i];
+  if (f & flagActive != 0) perCountry[countryId[i]]++;
+  if (countryId[i] != country || f & flagsNeeded != flagsNeeded) continue;
+  final a = age[i];
+  if (a < q.minAge || a > q.maxAge || score[i] < q.minScore || created[i] <= afterMs) continue;
+  if (heapSize < q.top) { heap[heapSize++] = i; siftUp(heapSize - 1); }
+  else if (worse(heap[0], i)) { heap[0] = i; siftDown(0); }
+}
+```
+
+### 6.4 Results (AOT, 4 vCPU, medians; `packages/users_pipeline/results/aot.md`)
+
+| Stage | 1 🐢 slow | 2 🚀 fused + objects | 3 tree → columns | 4 🚀🚀 scanner → columns |
+|---|---:|---:|---:|---:|
+| decode 10k | 76.3 ms | 53.9 ms | 139.1 ms | **12.2 ms** |
+| query + encode | 0.54 ms | 0.60 ms | 0.10 ms | **0.09 ms** |
+| end-to-end | 93.6 ms | 60.0 ms | — | **12.0 ms (7.8×)** |
+| `Isolate.run` → result in the main isolate | 103.6 ms (`List<User>`, deep copy) | 93.8 ms | — | **30.7 ms** (`TransferableTypedData`) |
+
+Two things to remember. First, variant 3 (tree → columns) is *slower* than variant 1: copying strings out of the tree into our own buffer costs more than dropping the `User` objects saves — columns pay off only when you skip the tree. Second, `Isolate.run` returning a `List<User>` is *slower* than parsing on the main thread (103 vs 94 ms) and still blocks the UI on receipt; only `TransferableTypedData` with the packed table (`UserTable.packContiguous()` → `unpack` as views over one buffer) makes the isolate worth it.
+
+### 6.5 Flutter: the same thing on a device (`flutter_bench/lib/main.dart`)
+
+The app runs the same variants and measures jank: during a measurement a `RotationTransition` spins on the UI thread and `SchedulerBinding.instance.addTimingsCallback` counts frames above 16.7 ms:
+
+```dart
+class JankMeter {
+  int frames = 0, jank = 0; double worstMs = 0;
+  void _cb(List<FrameTiming> timings) {
+    for (final t in timings) {
+      final ms = t.totalSpan.inMicroseconds / 1000;
+      frames++; if (ms > 16.7) jank++; if (ms > worstMs) worstMs = ms;
+    }
+  }
+  void start() { SchedulerBinding.instance.addTimingsCallback(_cb); }
+  void stop()  { SchedulerBinding.instance.removeTimingsCallback(_cb); }
+}
+```
+
+Six rows in the table: three variants on the UI thread (the animation freezes for 100 ms with 🐢 and for ~12 ms with the scanner), `compute()` returning a `List<User>` (parsing off the UI thread, but the deep copy of 100k objects on receipt stalls a frame again), `Isolate.run` → `TransferableTypedData` (smooth UI) and `Isolate.run` running the whole pipeline and returning only the top 100 (cheapest: 100 Strings and a small map). The widget test (`flutter test`) drives all variants on 5,000 generated users.
+
+A pitfall the test hit immediately: a lambda passed to `Isolate.run` **inside a `State` method** threw "object is unsendable: TickerFuture". A closure defined in a method shares its context with the method's other closures and captures `this` (dart-lang/sdk#36983, "over-capturing"), and `this` is a `State` holding an `AnimationController`. The fix is the same one ObjectBox uses ("Static callback to avoid over-capturing"): isolate work in top-level functions with explicit arguments:
+
+```dart
+Future<TransferableTypedData> scanInIsolate(Uint8List bytes) =>
+    Isolate.run(() => TransferableTypedData.fromList([decodeColumnar(bytes).packContiguous()]));
+```
+
+### 6.6 What to adopt in a normal project
+
+1. `bodyBytes` instead of `body`; `JsonUtf8Encoder`; loops instead of chains — half a day, −30 %.
+2. Stop parsing dates in `fromJson` if you do not compare them; keep epoch ms (`int`) or an offset into the string.
+3. For lists of more than ~1,000 items shown in a `ListView`: a columnar model, or at least a lazy `fromJson` per visible row (a list of `Map`s is cheaper than a list of objects with `DateTime`s).
+4. Isolates only with a flat result (`TransferableTypedData`, `Isolate.exit`) or a *small* one (the top 100). `compute()` returning 10k models is worse than no isolate at all.
+5. A hand-written byte parser only for one well-tested, high-volume endpoint — with a differential test against `jsonDecode` (like `assertVariantsAgree`).
+
+---
+
 ## Appendix — what exactly we read
 
 | Repository / file | Lines, fragments |

@@ -1,0 +1,19 @@
+name: users_pipeline
+description: >-
+  Realistyczny benchmark "pobierz 10k użytkowników jako JSON, zdekoduj,
+  przefiltruj, posortuj, zakoduj" w czterech wariantach: od idiomatycznego
+  (http + jsonDecode + fromJson + where/map/toList) do kolumnowego parsera
+  bajtowego bez drzewa pośredniego. Czysty Dart; używany przez CLI
+  (benchmarks/) i aplikację Flutter (flutter_bench/).
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+dependencies:
+  http: ^1.2.0
+
+dev_dependencies:
+  lints: ^5.0.0
+  test: ^1.25.0

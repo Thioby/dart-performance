@@ -1,0 +1,24 @@
+name: flutter_bench
+description: >-
+  Benchmark "pobierz 10k użytkowników jako JSON i przefiltruj" na urządzeniu:
+  te same warianty co w CLI (packages/users_pipeline), plus licznik janku
+  klatek pokazujący, co dzieje się z UI, gdy parsujesz na wątku głównym.
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  users_pipeline:
+    path: ../packages/users_pipeline
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

@@ -12,6 +12,8 @@ Warsztat „Jak pisać ekstremalnie szybki kod” — dwa przewodniki (Rust i Da
 | [`docs/dart-flutter-extreme-performance-guide.md`](docs/dart-flutter-extreme-performance-guide.md) | Przewodnik Dart/Flutter: Dart VM (Smi/boxing/GC/typed data), `dart:ffi` na bazie `sqlite3.dart`/Isar/ObjectBox, izolaty bez kopiowania, Flutter (Impeller/RenderObject), ściąga + 3 katy. Liczby z `benchmarks/` |
 | [`benchmarks/`](benchmarks/) | Pakiet Dart: harness + 12 grup benchmarków (typed data, SoA, JSON, stringi, bufory/HTTP, kolekcje, FFI `isLeaf`/`asTypedList`, SQLite group commit i `stmt.raw`, izolaty/`TransferableTypedData`). `tool/run.sh` uruchamia JIT i AOT |
 | [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md) | Wyniki referencyjne (Dart 3.13.5, Linux x64, 4 vCPU) |
+| [`packages/users_pipeline/`](packages/users_pipeline/) | **Studium przypadku**: 10k użytkowników z JSON (realny fetch z raw GitHub/gista, fallback lokalny) → decode → filtr/sort/group → encode, 4 warianty od `jsonDecode`+`fromJson`+`where` do skanera bajtowego → kolumny; `Isolate.run` z `List<User>` vs `TransferableTypedData`. AOT: 93.6 ms → 12.0 ms (7.8×) |
+| [`flutter_bench/`](flutter_bench/) | Aplikacja Flutter z tymi samymi wariantami + licznik janku klatek (`addTimingsCallback`); `flutter test` przepuszcza wszystkie warianty |
 | [`.claude/skills/`](.claude/skills/) | Skille Claude Code: `dart-perf-review`, `dart-zero-alloc`, `dart-ffi-perf`, `dart-isolates`, `flutter-render-perf`, `dart-benchmark` |
 
 ## Szybki start
