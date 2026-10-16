@@ -1,352 +1,349 @@
 # Benchmark results / Wyniki benchmarków
 
-> 🇬🇧 **English summary.** Reference run of `tool/run.sh` (JIT via `dart run`, AOT via `dart build cli`). Method: 100 ms warm-up, ~300 ms per sample, 7 samples, **median**; isolates: 5 × 20 round-trips, median. Raw data: `results/jit.json`, `results/aot.json`. Suite and variant names below are printed by the benchmark runner in Polish; the English guide (`docs/en/dart-flutter-extreme-performance-guide.md`) uses the same numbers with English labels, and `benchmarks/README.en.md` lists what each group measures. `vs baseline` > 1 means the variant is faster. Numbers quoted in the guides come from an earlier run on the same machine and configuration; the differences are within the min–max spread of individual samples.
+> 🇬🇧 Reference run of `tool/run.sh` (JIT via `dart run`, AOT via `dart build cli`). Method: 100 ms warm-up, ~300 ms per sample, 7 samples, **median**; isolates: 5 × 20 round-trips, median. Raw data: `results/jit.json`, `results/aot.json`. Suite and variant names are the labels printed by the runner. `vs baseline` > 1 means the variant is faster. Numbers quoted in the guides come from earlier runs on the same machine and configuration; differences are within the min–max spread of individual samples.
+>
+> 🇵🇱 Przebieg referencyjny `tool/run.sh` (JIT: `dart run`, AOT: `dart build cli`). Metoda: rozgrzewka 100 ms, ~300 ms na próbę, 7 prób, **mediana**; izolaty: 5 × 20 round-tripów, mediana. Surowe dane: `results/*.json`. Nazwy suite'ów i wariantów to etykiety drukowane przez runner (po angielsku). `vs baseline` > 1 oznacza szybszy wariant. Liczby cytowane w przewodnikach pochodzą z wcześniejszych przebiegów na tej samej maszynie; różnice mieszczą się w rozrzucie min–max.
 
-- Data: 2026-10-14
+- Date / data: 2026-10-16
 - Dart SDK: 3.13.5 (linux_x64)
-- CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 vCPU (kontener współdzielony, bez pinowania)
-- Komenda: `tool/run.sh` (JIT: `dart run`, AOT: `dart build cli`)
-- Metoda: rozgrzewka 100 ms, ~300 ms na próbę, 7 prób, **mediana**; izolaty: 5 × 20 round-tripów, mediana
-- Surowe dane: `results/jit.json`, `results/aot.json`
+- CPU: Intel(R) Xeon(R) Processor @ 2.10GHz, 4 vCPU (shared container, no pinning)
 
-Liczby cytowane w `docs/dart-flutter-extreme-performance-guide.md` i w `README.md` pochodzą z wcześniejszego przebiegu na tej samej maszynie i tej samej konfiguracji; różnice względem poniższych tabel mieszczą się w rozrzucie min–max pojedynczych prób (patrz pliki JSON). `vs baseline` > 1 oznacza szybszy wariant.
+## AOT (dart build cli) — the mode Flutter release runs in
 
-## AOT (dart build cli) — tryb, w którym działa Flutter release
+### typed_lists/sum int (65k elements)
 
-### typed_lists/sum int (65k elementów)
-
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| List<int> indexed loop | 45.41 µs | 22021 | 1.00x |
-| List<int> for-in | 55.59 µs | 17990 | 0.82x |
-| Int64List indexed loop | 36.15 µs | 27666 | 1.26x |
-| Int32List indexed loop | 43.39 µs | 23045 | 1.05x |
-| Uint8List indexed loop | 43.31 µs | 23088 | 1.05x |
+| List<int> indexed loop | 77.37 µs | 12925 | 1.00x |
+| List<int> for-in | 73.97 µs | 13519 | 1.05x |
+| Int64List indexed loop | 48.71 µs | 20531 | 1.59x |
+| Int32List indexed loop | 46.27 µs | 21612 | 1.67x |
+| Uint8List indexed loop | 51.48 µs | 19426 | 1.50x |
 
-### typed_lists/sum double (65k elementów)
+### typed_lists/sum double (65k elements)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| List<double> indexed loop (boxed) | 88.30 µs | 11324 | 1.00x |
-| Float64List przez top-level final (leniwy getter w pętli) | 204.40 µs | 4892 | 0.43x |
-| Float64List przekazana jako parametr/lokalna | 82.90 µs | 12062 | 1.07x |
+| List<double> indexed loop (boxed) | 51.02 µs | 19601 | 1.00x |
+| Float64List via top-level final (lazy getter in loop) | 196.66 µs | 5085 | 0.26x |
+| Float64List passed as parameter/local | 54.76 µs | 18263 | 0.93x |
 
-### typed_lists/build (65k elementów)
+### typed_lists/build (65k elements)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| List<int> growable add() | 3.86 ms | 259 | 1.00x |
-| List<int>.filled prealokowana | 1.06 ms | 942 | 3.64x |
-| Int32List prealokowana | 403.61 µs | 2478 | 9.56x |
-| List<double> growable add() (boxing) | 6.10 ms | 164 | 0.63x |
-| Float64List prealokowana | 664.75 µs | 1504 | 5.81x |
+| List<int> growable add() | 2.50 ms | 400 | 1.00x |
+| List<int>.filled preallocated | 720.10 µs | 1389 | 3.47x |
+| Int32List preallocated | 318.09 µs | 3144 | 7.85x |
+| List<double> growable add() (boxing) | 4.60 ms | 217 | 0.54x |
+| Float64List preallocated | 627.90 µs | 1593 | 3.98x |
 
-### soa/particles (10k cząstek, 1 klatka)
+### soa/particles (10k particles, 1 frame)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| List<Particle> map().toList() (alokuje 10k obj/klatkę) | 281.93 µs | 3547 | 1.00x |
-| List<Particle> mutacja w miejscu (AoS) | 30.02 µs | 33307 | 9.39x |
-| 4x Float64List (SoA) | 23.47 µs | 42608 | 12.01x |
-| 1x Float64List ze stride (flat struct) | 26.97 µs | 37079 | 10.45x |
+| List<Particle> map().toList() (allocates 10k obj/frame) | 297.81 µs | 3358 | 1.00x |
+| List<Particle> in-place mutation (AoS) | 27.17 µs | 36804 | 10.96x |
+| 4x Float64List (SoA) | 19.39 µs | 51582 | 15.36x |
+| 1x Float64List with stride (flat struct) | 23.09 µs | 43316 | 12.90x |
 
-### json/encode feed (20 postów, ~2.6 KB)
+### json/encode feed (20 posts, ~2.6 KB)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| jsonEncode(map) + utf8.encode | 68.39 µs | 14623 | 1.00x |
-| JsonUtf8Encoder().convert(map) | 42.18 µs | 23707 | 1.62x |
-| ByteWriter: bajty prosto do Uint8List (zero-alloc) | 8.96 µs | 111653 | 7.64x |
+| jsonEncode(map) + utf8.encode | 57.72 µs | 17326 | 1.00x |
+| JsonUtf8Encoder().convert(map) | 42.09 µs | 23758 | 1.37x |
+| ByteWriter: bytes straight into Uint8List (zero-alloc) | 7.11 µs | 140644 | 8.12x |
 
 ### json/decode feed (~2.6 KB)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| jsonDecode(utf8.decode(bytes)) | 34.98 µs | 28589 | 1.00x |
-| utf8.decoder.fuse(json.decoder).convert(bytes) | 29.76 µs | 33604 | 1.18x |
+| jsonDecode(utf8.decode(bytes)) | 30.13 µs | 33190 | 1.00x |
+| utf8.decoder.fuse(json.decoder).convert(bytes) | 23.64 µs | 42299 | 1.27x |
 
-### strings/build 200 linii
+### strings/build 200 lines
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| String += (kwadratowe kopiowanie) | 128.02 µs | 7811 | 1.00x |
-| StringBuffer.write | 36.89 µs | 27104 | 3.47x |
-| StringBuffer + utf8.encode (do socketu) | 53.20 µs | 18798 | 2.41x |
-| bajty prosto do reużywanego Uint8List | 7.58 µs | 131926 | 16.89x |
+| String += (quadratic copying) | 62.77 µs | 15930 | 1.00x |
+| StringBuffer.write | 28.02 µs | 35689 | 2.24x |
+| StringBuffer + utf8.encode (to socket) | 42.79 µs | 23369 | 1.47x |
+| bytes straight into a reused Uint8List | 6.93 µs | 144321 | 9.06x |
 
-### buffers/assemble 16x512B fragmentów
+### buffers/assemble 16x512B chunks
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| List<int> addAll (boxing) | 188.02 µs | 5319 | 1.00x |
-| Uint8List: nowa kopia na fragment | 14.42 µs | 69355 | 13.04x |
-| BytesBuilder(copy:false).takeBytes() | 2.43 µs | 411291 | 77.33x |
-| prealokowany Uint8List + sublistView (zero-copy) | 445.3 ns | 2245529 | 422.20x |
+| List<int> addAll (boxing) | 150.38 µs | 6650 | 1.00x |
+| Uint8List: new copy per chunk | 5.18 µs | 192986 | 29.02x |
+| BytesBuilder(copy:false).takeBytes() | 1.15 µs | 870457 | 130.90x |
+| preallocated Uint8List + sublistView (zero-copy) | 447.3 ns | 2235764 | 336.22x |
 
-### http/parse request (~430 B, 8 nagłówków)
+### http/parse request (~430 B, 8 headers)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| utf8.decode + split + Map<String,String> | 4.01 µs | 249175 | 1.00x |
-| skan bajtowy, offsety, 3 nagłówki (zero-alloc) | 954.0 ns | 1048195 | 4.21x |
+| utf8.decode + split + Map<String,String> | 3.75 µs | 266602 | 1.00x |
+| byte scan, offsets, 3 headers (zero-alloc) | 873.7 ns | 1144555 | 4.29x |
 
 ### collections/filter+map 10k
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| where().map().toList() | 228.71 µs | 4372 | 1.00x |
-| pętla for + List.add | 90.74 µs | 11020 | 2.52x |
-| 2 pętle + Int32List (zero realokacji) | 52.31 µs | 19118 | 4.37x |
+| where().map().toList() | 181.85 µs | 5499 | 1.00x |
+| for loop + List.add | 68.22 µs | 14659 | 2.67x |
+| 2 loops + Int32List (zero reallocation) | 43.69 µs | 22886 | 4.16x |
 
 ### collections/sum 10k
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| fold() | 32.03 µs | 31222 | 1.00x |
-| reduce() | 36.29 µs | 27554 | 0.88x |
-| pętla for | 23.50 µs | 42560 | 1.36x |
+| fold() | 35.53 µs | 28142 | 1.00x |
+| reduce() | 35.94 µs | 27825 | 0.99x |
+| for loop | 17.22 µs | 58073 | 2.06x |
 
-### collections/histogram 10k wartości 0..999
+### collections/histogram 10k values 0..999
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| Map<int,int> | 259.09 µs | 3860 | 1.00x |
-| Int32List[1000] jako tablica zliczeń | 23.00 µs | 43473 | 11.26x |
+| Map<int,int> | 246.06 µs | 4064 | 1.00x |
+| Int32List[1000] as a count table | 19.77 µs | 50577 | 12.45x |
 
 ### ffi/call add(a,b)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| czysty Dart a+b (referencja) | 2.5 ns | 406283275 | 1.00x |
-| FFI non-leaf | 22.1 ns | 45240181 | 0.11x |
-| FFI isLeaf: true | 6.2 ns | 161141105 | 0.40x |
+| pure Dart a+b (reference) | 2.8 ns | 360509684 | 1.00x |
+| FFI non-leaf | 23.9 ns | 41887720 | 0.12x |
+| FFI isLeaf: true | 7.8 ns | 127396790 | 0.35x |
 
 ### ffi/dot product 1024 double
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| czysty Dart na Float64List (widok asTypedList) | 1.58 µs | 631109 | 1.00x |
-| C dot_f64 przez FFI isLeaf | 1.28 µs | 782942 | 1.24x |
+| pure Dart on Float64List (asTypedList view) | 1.67 µs | 599064 | 1.00x |
+| C dot_f64 via FFI isLeaf | 733.2 ns | 1363832 | 2.28x |
 
-### ffi/read 4 KB z Pointer<Uint8>
+### ffi/read 4 KB from Pointer<Uint8>
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| ptr[i] do List<int> (4096 wywołań) | 11.49 µs | 87018 | 1.00x |
-| Uint8List.fromList(asTypedList) (1 memcpy) | 812.3 ns | 1231146 | 14.15x |
-| asTypedList widok (zero-copy) | 11.1 ns | 89790044 | 1031.85x |
+| ptr[i] into List<int> (4096 calls) | 7.97 µs | 125540 | 1.00x |
+| Uint8List.fromList(asTypedList) (1 memcpy) | 260.6 ns | 3837843 | 30.57x |
+| asTypedList view (zero-copy) | 9.6 ns | 103994490 | 828.38x |
 
-### ffi/fill 256 B: alokacja natywna
+### ffi/fill 256 B: native allocation
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| malloc + free per wywołanie | 282.4 ns | 3540697 | 1.00x |
-| Arena (using) per wywołanie | 406.2 ns | 2461758 | 0.70x |
-| reużywany bufor (zero-alloc) | 164.4 ns | 6082544 | 1.72x |
-| reużywany bufor, non-leaf | 176.6 ns | 5663855 | 1.60x |
+| malloc + free per call | 211.5 ns | 4728495 | 1.00x |
+| Arena (using) per call | 300.1 ns | 3332152 | 0.70x |
+| reused buffer (zero-alloc) | 130.2 ns | 7677848 | 1.62x |
+| reused buffer, non-leaf | 121.8 ns | 8210394 | 1.74x |
 
-### sqlite/insert 10k wierszy (WAL, synchronous=NORMAL)
+### sqlite/insert 10k rows (WAL, synchronous=NORMAL)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| execute(sql, args) per wiersz, autocommit | 240.59 ms | 4 | 1.00x |
-| prepared statement, autocommit per wiersz | 200.16 ms | 5 | 1.20x |
-| prepared + paczki po 100 (BEGIN/COMMIT) | 28.16 ms | 36 | 8.54x |
-| prepared + paczki po 1000 | 15.75 ms | 63 | 15.27x |
-| prepared + jedna transakcja (group commit) | 17.03 ms | 59 | 14.13x |
+| execute(sql, args) per row, autocommit | 213.69 ms | 5 | 1.00x |
+| prepared statement, autocommit per row | 148.41 ms | 7 | 1.44x |
+| prepared + batches of 100 (BEGIN/COMMIT) | 15.72 ms | 64 | 13.60x |
+| prepared + batches of 1000 | 14.21 ms | 70 | 15.04x |
+| prepared + one transaction (group commit) | 13.15 ms | 76 | 16.25x |
 
-### sqlite/select 10k wierszy
+### sqlite/select 10k rows
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| select() -> ResultSet (lista Row) | 5.11 ms | 196 | 1.00x |
-| selectCursor() wiersz po wierszu | 3.62 ms | 276 | 1.41x |
-| stmt.raw: step() + columnInt64() (zero-alloc) | 920.58 µs | 1086 | 5.55x |
+| select() -> ResultSet (list of Row) | 3.43 ms | 292 | 1.00x |
+| selectCursor() row by row | 3.32 ms | 301 | 1.03x |
+| stmt.raw: step() + columnInt64() (zero-alloc) | 788.59 µs | 1268 | 4.35x |
 
-### sqlite/read 10k kolumn TEXT
+### sqlite/read 10k TEXT columns
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| raw.columnText() -> String per wiersz | 1.82 ms | 550 | 1.00x |
-| CAST AS BLOB + raw.columnBlobInto(bufor) (zero-alloc) | 1.60 ms | 626 | 1.14x |
+| raw.columnText() -> String per row | 1.55 ms | 646 | 1.00x |
+| CAST AS BLOB + raw.columnBlobInto(buffer) (zero-alloc) | 1.27 ms | 785 | 1.21x |
 
-### isolates/round-trip 10k rekordów
+### isolates/round-trip 10k records
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| List<Map> 10k obiektów (deep copy przez port) | 8.03 ms | 125 | 1.00x |
-| Uint8List 120 KB (kopia przez port) | 43.95 µs | 22753 | 182.76x |
-| TransferableTypedData 120 KB (fromList kopia + move) | 102.65 µs | 9742 | 78.25x |
-| Uint8List 16 MB (kopia przez port) | 12.89 ms | 78 | 0.62x |
-| TransferableTypedData 16 MB (fromList kopia + move) | 4.67 ms | 214 | 1.72x |
-| Isolate.run(() => trivial) — koszt spawn | 105.70 µs | 9461 | 75.99x |
+| List<Map> 10k objects (deep copy via port) | 6.15 ms | 163 | 1.00x |
+| Uint8List 120 KB (copy via port) | 40.85 µs | 24480 | 150.55x |
+| TransferableTypedData 120 KB (fromList copy + move) | 88.70 µs | 11274 | 69.33x |
+| Uint8List 16 MB (copy via port) | 12.14 ms | 82 | 0.51x |
+| TransferableTypedData 16 MB (fromList copy + move) | 5.57 ms | 180 | 1.10x |
+| Isolate.run(() => trivial) — spawn cost | 121.40 µs | 8237 | 50.66x |
 
 ## JIT (dart run)
 
-### typed_lists/sum int (65k elementów)
+### typed_lists/sum int (65k elements)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| List<int> indexed loop | 56.42 µs | 17723 | 1.00x |
-| List<int> for-in | 49.18 µs | 20335 | 1.15x |
-| Int64List indexed loop | 114.73 µs | 8716 | 0.49x |
-| Int32List indexed loop | 63.96 µs | 15635 | 0.88x |
-| Uint8List indexed loop | 66.27 µs | 15090 | 0.85x |
+| List<int> indexed loop | 69.24 µs | 14443 | 1.00x |
+| List<int> for-in | 50.76 µs | 19701 | 1.36x |
+| Int64List indexed loop | 75.71 µs | 13208 | 0.91x |
+| Int32List indexed loop | 51.99 µs | 19234 | 1.33x |
+| Uint8List indexed loop | 63.42 µs | 15767 | 1.09x |
 
-### typed_lists/sum double (65k elementów)
+### typed_lists/sum double (65k elements)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| List<double> indexed loop (boxed) | 90.97 µs | 10993 | 1.00x |
-| Float64List przez top-level final (leniwy getter w pętli) | 216.60 µs | 4617 | 0.42x |
-| Float64List przekazana jako parametr/lokalna | 82.16 µs | 12172 | 1.11x |
+| List<double> indexed loop (boxed) | 116.21 µs | 8605 | 1.00x |
+| Float64List via top-level final (lazy getter in loop) | 190.76 µs | 5242 | 0.61x |
+| Float64List passed as parameter/local | 47.04 µs | 21258 | 2.47x |
 
-### typed_lists/build (65k elementów)
+### typed_lists/build (65k elements)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| List<int> growable add() | 4.01 ms | 249 | 1.00x |
-| List<int>.filled prealokowana | 1.02 ms | 978 | 3.93x |
-| Int32List prealokowana | 405.50 µs | 2466 | 9.90x |
-| List<double> growable add() (boxing) | 6.54 ms | 153 | 0.61x |
-| Float64List prealokowana | 719.55 µs | 1390 | 5.58x |
+| List<int> growable add() | 2.63 ms | 380 | 1.00x |
+| List<int>.filled preallocated | 1.08 ms | 929 | 2.45x |
+| Int32List preallocated | 357.72 µs | 2796 | 7.36x |
+| List<double> growable add() (boxing) | 4.90 ms | 204 | 0.54x |
+| Float64List preallocated | 565.63 µs | 1768 | 4.65x |
 
-### soa/particles (10k cząstek, 1 klatka)
+### soa/particles (10k particles, 1 frame)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| List<Particle> map().toList() (alokuje 10k obj/klatkę) | 237.85 µs | 4204 | 1.00x |
-| List<Particle> mutacja w miejscu (AoS) | 33.65 µs | 29715 | 7.07x |
-| 4x Float64List (SoA) | 27.15 µs | 36838 | 8.76x |
-| 1x Float64List ze stride (flat struct) | 18.41 µs | 54328 | 12.92x |
+| List<Particle> map().toList() (allocates 10k obj/frame) | 165.92 µs | 6027 | 1.00x |
+| List<Particle> in-place mutation (AoS) | 29.39 µs | 34021 | 5.64x |
+| 4x Float64List (SoA) | 17.23 µs | 58048 | 9.63x |
+| 1x Float64List with stride (flat struct) | 21.99 µs | 45466 | 7.54x |
 
-### json/encode feed (20 postów, ~2.6 KB)
+### json/encode feed (20 posts, ~2.6 KB)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| jsonEncode(map) + utf8.encode | 60.44 µs | 16546 | 1.00x |
-| JsonUtf8Encoder().convert(map) | 39.03 µs | 25620 | 1.55x |
-| ByteWriter: bajty prosto do Uint8List (zero-alloc) | 8.43 µs | 118674 | 7.17x |
+| jsonEncode(map) + utf8.encode | 46.79 µs | 21371 | 1.00x |
+| JsonUtf8Encoder().convert(map) | 34.36 µs | 29101 | 1.36x |
+| ByteWriter: bytes straight into Uint8List (zero-alloc) | 8.80 µs | 113575 | 5.31x |
 
 ### json/decode feed (~2.6 KB)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| jsonDecode(utf8.decode(bytes)) | 38.50 µs | 25975 | 1.00x |
-| utf8.decoder.fuse(json.decoder).convert(bytes) | 34.48 µs | 29000 | 1.12x |
+| jsonDecode(utf8.decode(bytes)) | 30.69 µs | 32586 | 1.00x |
+| utf8.decoder.fuse(json.decoder).convert(bytes) | 27.98 µs | 35743 | 1.10x |
 
-### strings/build 200 linii
+### strings/build 200 lines
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| String += (kwadratowe kopiowanie) | 108.04 µs | 9256 | 1.00x |
-| StringBuffer.write | 28.63 µs | 34923 | 3.77x |
-| StringBuffer + utf8.encode (do socketu) | 39.88 µs | 25075 | 2.71x |
-| bajty prosto do reużywanego Uint8List | 8.83 µs | 113211 | 12.23x |
+| String += (quadratic copying) | 54.41 µs | 18380 | 1.00x |
+| StringBuffer.write | 31.44 µs | 31803 | 1.73x |
+| StringBuffer + utf8.encode (to socket) | 37.52 µs | 26652 | 1.45x |
+| bytes straight into a reused Uint8List | 9.28 µs | 107746 | 5.86x |
 
-### buffers/assemble 16x512B fragmentów
+### buffers/assemble 16x512B chunks
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| List<int> addAll (boxing) | 104.53 µs | 9566 | 1.00x |
-| Uint8List: nowa kopia na fragment | 14.00 µs | 71431 | 7.47x |
-| BytesBuilder(copy:false).takeBytes() | 2.06 µs | 486101 | 50.81x |
-| prealokowany Uint8List + sublistView (zero-copy) | 594.2 ns | 1682923 | 175.92x |
+| List<int> addAll (boxing) | 76.90 µs | 13004 | 1.00x |
+| Uint8List: new copy per chunk | 3.94 µs | 253743 | 19.51x |
+| BytesBuilder(copy:false).takeBytes() | 879.8 ns | 1136633 | 87.41x |
+| preallocated Uint8List + sublistView (zero-copy) | 485.5 ns | 2059587 | 158.39x |
 
-### http/parse request (~430 B, 8 nagłówków)
+### http/parse request (~430 B, 8 headers)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| utf8.decode + split + Map<String,String> | 4.74 µs | 211170 | 1.00x |
-| skan bajtowy, offsety, 3 nagłówki (zero-alloc) | 914.7 ns | 1093242 | 5.18x |
+| utf8.decode + split + Map<String,String> | 4.04 µs | 247503 | 1.00x |
+| byte scan, offsets, 3 headers (zero-alloc) | 963.8 ns | 1037559 | 4.19x |
 
 ### collections/filter+map 10k
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| where().map().toList() | 200.30 µs | 4992 | 1.00x |
-| pętla for + List.add | 61.65 µs | 16220 | 3.25x |
-| 2 pętle + Int32List (zero realokacji) | 40.24 µs | 24850 | 4.98x |
+| where().map().toList() | 118.98 µs | 8405 | 1.00x |
+| for loop + List.add | 39.28 µs | 25460 | 3.03x |
+| 2 loops + Int32List (zero reallocation) | 40.62 µs | 24620 | 2.93x |
 
 ### collections/sum 10k
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| fold() | 42.79 µs | 23371 | 1.00x |
-| reduce() | 37.39 µs | 26745 | 1.14x |
-| pętla for | 23.70 µs | 42195 | 1.81x |
+| fold() | 34.48 µs | 29002 | 1.00x |
+| reduce() | 31.33 µs | 31919 | 1.10x |
+| for loop | 25.50 µs | 39222 | 1.35x |
 
-### collections/histogram 10k wartości 0..999
+### collections/histogram 10k values 0..999
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| Map<int,int> | 329.98 µs | 3030 | 1.00x |
-| Int32List[1000] jako tablica zliczeń | 22.64 µs | 44176 | 14.58x |
+| Map<int,int> | 299.33 µs | 3341 | 1.00x |
+| Int32List[1000] as a count table | 25.20 µs | 39688 | 11.88x |
 
 ### ffi/call add(a,b)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| czysty Dart a+b (referencja) | 5.4 ns | 184222257 | 1.00x |
-| FFI non-leaf | 25.5 ns | 39214894 | 0.21x |
-| FFI isLeaf: true | 14.3 ns | 70164422 | 0.38x |
+| pure Dart a+b (reference) | 3.4 ns | 293872206 | 1.00x |
+| FFI non-leaf | 30.0 ns | 33317240 | 0.11x |
+| FFI isLeaf: true | 8.1 ns | 123334100 | 0.42x |
 
 ### ffi/dot product 1024 double
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| czysty Dart na Float64List (widok asTypedList) | 1.96 µs | 509303 | 1.00x |
-| C dot_f64 przez FFI isLeaf | 1.25 µs | 801175 | 1.57x |
+| pure Dart on Float64List (asTypedList view) | 2.22 µs | 449548 | 1.00x |
+| C dot_f64 via FFI isLeaf | 710.8 ns | 1406856 | 3.13x |
 
-### ffi/read 4 KB z Pointer<Uint8>
+### ffi/read 4 KB from Pointer<Uint8>
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| ptr[i] do List<int> (4096 wywołań) | 19.69 µs | 50783 | 1.00x |
-| Uint8List.fromList(asTypedList) (1 memcpy) | 902.1 ns | 1108505 | 21.83x |
-| asTypedList widok (zero-copy) | 23.7 ns | 42179761 | 830.59x |
+| ptr[i] into List<int> (4096 calls) | 17.45 µs | 57322 | 1.00x |
+| Uint8List.fromList(asTypedList) (1 memcpy) | 261.8 ns | 3819350 | 66.63x |
+| asTypedList view (zero-copy) | 8.0 ns | 124348111 | 2169.30x |
 
-### ffi/fill 256 B: alokacja natywna
+### ffi/fill 256 B: native allocation
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| malloc + free per wywołanie | 240.2 ns | 4163122 | 1.00x |
-| Arena (using) per wywołanie | 323.5 ns | 3091309 | 0.74x |
-| reużywany bufor (zero-alloc) | 161.3 ns | 6201445 | 1.49x |
-| reużywany bufor, non-leaf | 166.7 ns | 5998533 | 1.44x |
+| malloc + free per call | 215.9 ns | 4632729 | 1.00x |
+| Arena (using) per call | 277.4 ns | 3605295 | 0.78x |
+| reused buffer (zero-alloc) | 123.7 ns | 8086870 | 1.75x |
+| reused buffer, non-leaf | 122.6 ns | 8155117 | 1.76x |
 
-### sqlite/insert 10k wierszy (WAL, synchronous=NORMAL)
+### sqlite/insert 10k rows (WAL, synchronous=NORMAL)
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| execute(sql, args) per wiersz, autocommit | 315.38 ms | 3 | 1.00x |
-| prepared statement, autocommit per wiersz | 264.11 ms | 4 | 1.19x |
-| prepared + paczki po 100 (BEGIN/COMMIT) | 29.86 ms | 33 | 10.56x |
-| prepared + paczki po 1000 | 19.68 ms | 51 | 16.03x |
-| prepared + jedna transakcja (group commit) | 24.77 ms | 40 | 12.73x |
+| execute(sql, args) per row, autocommit | 184.43 ms | 5 | 1.00x |
+| prepared statement, autocommit per row | 156.76 ms | 6 | 1.18x |
+| prepared + batches of 100 (BEGIN/COMMIT) | 14.56 ms | 69 | 12.66x |
+| prepared + batches of 1000 | 13.33 ms | 75 | 13.83x |
+| prepared + one transaction (group commit) | 12.50 ms | 80 | 14.75x |
 
-### sqlite/select 10k wierszy
+### sqlite/select 10k rows
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| select() -> ResultSet (lista Row) | 4.90 ms | 204 | 1.00x |
-| selectCursor() wiersz po wierszu | 8.11 ms | 123 | 0.60x |
-| stmt.raw: step() + columnInt64() (zero-alloc) | 1.08 ms | 922 | 4.52x |
+| select() -> ResultSet (list of Row) | 3.70 ms | 270 | 1.00x |
+| selectCursor() row by row | 3.57 ms | 280 | 1.04x |
+| stmt.raw: step() + columnInt64() (zero-alloc) | 780.68 µs | 1281 | 4.74x |
 
-### sqlite/read 10k kolumn TEXT
+### sqlite/read 10k TEXT columns
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| raw.columnText() -> String per wiersz | 3.18 ms | 314 | 1.00x |
-| CAST AS BLOB + raw.columnBlobInto(bufor) (zero-alloc) | 1.58 ms | 632 | 2.01x |
+| raw.columnText() -> String per row | 1.60 ms | 625 | 1.00x |
+| CAST AS BLOB + raw.columnBlobInto(buffer) (zero-alloc) | 1.40 ms | 712 | 1.14x |
 
-### isolates/round-trip 10k rekordów
+### isolates/round-trip 10k records
 
-| Wariant | ns/op | ops/s | vs baseline |
+| Variant | ns/op | ops/s | vs baseline |
 |---|---:|---:|---:|
-| List<Map> 10k obiektów (deep copy przez port) | 9.91 ms | 101 | 1.00x |
-| Uint8List 120 KB (kopia przez port) | 91.90 µs | 10881 | 107.80x |
-| TransferableTypedData 120 KB (fromList kopia + move) | 156.05 µs | 6408 | 63.48x |
-| Uint8List 16 MB (kopia przez port) | 17.22 ms | 58 | 0.58x |
-| TransferableTypedData 16 MB (fromList kopia + move) | 8.68 ms | 115 | 1.14x |
-| Isolate.run(() => trivial) — koszt spawn | 367.65 µs | 2720 | 26.95x |
+| List<Map> 10k objects (deep copy via port) | 6.57 ms | 152 | 1.00x |
+| Uint8List 120 KB (copy via port) | 59.40 µs | 16835 | 110.67x |
+| TransferableTypedData 120 KB (fromList copy + move) | 118.10 µs | 8467 | 55.66x |
+| Uint8List 16 MB (copy via port) | 12.95 ms | 77 | 0.51x |
+| TransferableTypedData 16 MB (fromList copy + move) | 6.07 ms | 165 | 1.08x |
+| Isolate.run(() => trivial) — spawn cost | 302.60 µs | 3305 | 21.72x |

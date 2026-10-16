@@ -1,15 +1,15 @@
 # users pipeline (JIT, Dart 3.13.5)
 
-| Etap | Wariant | mediana ms | min | max |
+| Stage | Variant | median ms | min | max |
 |---|---|---:|---:|---:|
-| decode | 1 slow: String+jsonDecode+fromJson | 93.09 | 86.81 | 108.55 |
-| decode | 2 fused+fromJson (obiekty) | 87.84 | 67.05 | 101.45 |
-| decode | 3 tree -> kolumny | 120.71 | 90.02 | 155.73 |
-| decode | 4 byte scanner -> kolumny | 11.61 | 11.38 | 20.82 |
-| query+encode | 1 slow: where/sort/map/jsonEncode | 1.02 | 0.87 | 1.74 |
-| query+encode | 2 pętle + JsonUtf8Encoder | 1.16 | 0.74 | 1.84 |
-| query+encode | 3 kolumny (z drzewa) | 0.19 | 0.18 | 0.37 |
-| query+encode | 4 kolumny (ze skanera) | 0.18 | 0.17 | 0.22 |
-| end-to-end | 1 slow | 77.55 | 67.25 | 88.51 |
-| end-to-end | 2 fused objects | 67.36 | 63.43 | 88.71 |
-| end-to-end | 4 byte scanner | 12.22 | 11.14 | 20.61 |
+| decode | 1 slow: String+jsonDecode+fromJson | 106.04 | 77.35 | 176.80 |
+| decode | 2 fused+fromJson (objects) | 82.00 | 64.57 | 99.07 |
+| decode | 3 tree -> columns | 113.16 | 80.49 | 249.38 |
+| decode | 4 byte scanner -> columns | 11.86 | 11.60 | 16.43 |
+| query+encode | 1 slow: where/sort/map/jsonEncode | 1.05 | 0.80 | 1.36 |
+| query+encode | 2 loops + JsonUtf8Encoder | 1.17 | 0.79 | 1.61 |
+| query+encode | 3 columns (from tree) | 0.18 | 0.16 | 0.30 |
+| query+encode | 4 columns (from scanner) | 0.18 | 0.15 | 0.28 |
+| end-to-end | 1 slow | 89.98 | 84.55 | 102.10 |
+| end-to-end | 2 fused objects | 70.68 | 64.29 | 78.29 |
+| end-to-end | 4 byte scanner | 18.63 | 12.56 | 28.01 |

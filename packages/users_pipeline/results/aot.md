@@ -1,18 +1,18 @@
 # users pipeline (AOT, Dart 3.13.5)
 
-| Etap | Wariant | mediana ms | min | max |
+| Stage | Variant | median ms | min | max |
 |---|---|---:|---:|---:|
-| decode | 1 slow: String+jsonDecode+fromJson | 76.30 | 73.63 | 85.84 |
-| decode | 2 fused+fromJson (obiekty) | 53.92 | 51.12 | 82.60 |
-| decode | 3 tree -> kolumny | 139.09 | 79.97 | 150.55 |
-| decode | 4 byte scanner -> kolumny | 12.16 | 11.68 | 15.07 |
-| query+encode | 1 slow: where/sort/map/jsonEncode | 0.54 | 0.51 | 0.56 |
-| query+encode | 2 pętle + JsonUtf8Encoder | 0.60 | 0.58 | 0.70 |
-| query+encode | 3 kolumny (z drzewa) | 0.10 | 0.09 | 0.13 |
-| query+encode | 4 kolumny (ze skanera) | 0.09 | 0.09 | 0.11 |
-| end-to-end | 1 slow | 93.59 | 76.28 | 108.65 |
-| end-to-end | 2 fused objects | 59.96 | 57.94 | 77.72 |
-| end-to-end | 4 byte scanner | 12.03 | 11.81 | 14.01 |
-| isolate rt | 1 Isolate.run -> List<User> | 103.63 | 86.14 | 130.31 |
-| isolate rt | 2 Isolate.run -> List<User> (fused) | 93.77 | 83.82 | 103.73 |
-| isolate rt | 4 Isolate.run -> Transferable(kolumny) | 30.72 | 20.88 | 31.74 |
+| decode | 1 slow: String+jsonDecode+fromJson | 73.97 | 60.40 | 85.54 |
+| decode | 2 fused+fromJson (objects) | 53.71 | 49.64 | 72.77 |
+| decode | 3 tree -> columns | 91.12 | 86.66 | 116.45 |
+| decode | 4 byte scanner -> columns | 12.35 | 11.96 | 16.08 |
+| query+encode | 1 slow: where/sort/map/jsonEncode | 0.58 | 0.54 | 0.85 |
+| query+encode | 2 loops + JsonUtf8Encoder | 0.69 | 0.61 | 0.82 |
+| query+encode | 3 columns (from tree) | 0.08 | 0.07 | 0.12 |
+| query+encode | 4 columns (from scanner) | 0.07 | 0.07 | 0.10 |
+| end-to-end | 1 slow | 84.87 | 77.63 | 109.71 |
+| end-to-end | 2 fused objects | 62.00 | 56.99 | 74.90 |
+| end-to-end | 4 byte scanner | 12.20 | 11.96 | 13.95 |
+| isolate rt | 1 Isolate.run -> List<User> | 97.76 | 81.59 | 214.04 |
+| isolate rt | 2 Isolate.run -> List<User> (fused) | 70.75 | 66.47 | 89.13 |
+| isolate rt | 4 Isolate.run -> Transferable(columns) | 22.07 | 19.87 | 30.21 |
