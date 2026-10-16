@@ -1,11 +1,11 @@
-// Benchmark "10k użytkowników z JSON" w Flutterze.
+// Benchmark "10k users from JSON" in Flutter.
 //
-// Ekran: źródło danych (URL gista / raw GitHub albo wbudowany generator),
-// przycisk uruchamiający warianty, tabela czasów oraz licznik janku:
-// podczas pomiaru kręci się animacja, a licznik zlicza klatki > 16.7 ms.
-// Dzięki temu widać różnicę między "parsuj na wątku UI" (animacja staje),
-// "compute() -> List<User>" (deep copy przy odbiorze też zatrzymuje UI)
-// i "Isolate.run -> TransferableTypedData" (UI płynne).
+// Screen: data source (gist URL / raw GitHub or the built-in generator),
+// a button that runs the variants, a timing table and a jank counter:
+// an animation spins during measurement and the counter tallies frames > 16.7 ms.
+// This makes the difference visible between "parse on the UI thread" (animation
+// freezes), "compute() -> List<User>" (the deep copy on receipt also stalls the UI)
+// and "Isolate.run -> TransferableTypedData" (UI stays smooth).
 import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
@@ -28,7 +28,7 @@ class BenchApp extends StatelessWidget {
       );
 }
 
-/// Jeden wiersz wyniku na ekranie.
+/// One result row on screen.
 class RowResult {
   final String variant;
   final double ms;
@@ -37,7 +37,7 @@ class RowResult {
   const RowResult(this.variant, this.ms, this.jankFrames, this.worstFrameMs);
 }
 
-/// Liczy klatki powyżej budżetu w czasie trwania jednego pomiaru.
+/// Counts frames over budget for the duration of a single measurement.
 class JankMeter {
   int frames = 0;
   int jank = 0;
@@ -72,12 +72,12 @@ class JankMeter {
   }
 }
 
-/// Praca dla izolatów jest w funkcjach TOP-LEVEL, nie w lambdach wewnątrz
-/// `State`. Lambda zdefiniowana w metodzie klasy współdzieli kontekst z innymi
-/// closure'ami tej metody i może przechwycić `this` (dart-lang/sdk#36983 —
-/// "over-capturing"). Tu `this` to `_BenchPageState` z `AnimationController`,
-/// a `TickerFuture` jest nieprzesyłalny: `Isolate.run` rzuca
-/// "object is unsendable". ObjectBox komentuje każdy taki callback:
+/// Isolate work lives in TOP-LEVEL functions, not in lambdas inside `State`.
+/// A lambda defined in a class method shares its context with the other
+/// closures of that method and may capture `this` (dart-lang/sdk#36983 —
+/// "over-capturing"). Here `this` is `_BenchPageState` with an
+/// `AnimationController`, and `TickerFuture` is unsendable: `Isolate.run`
+/// throws "object is unsendable". ObjectBox annotates every such callback:
 /// "Static callback to avoid over-capturing".
 Future<TransferableTypedData> scanInIsolate(Uint8List bytes) => Isolate.run(
       () => TransferableTypedData.fromList([decodeColumnar(bytes).packContiguous()]),
@@ -100,7 +100,7 @@ class _BenchPageState extends State<BenchPage> with SingleTickerProviderStateMix
 
   Uint8List? _bytes;
   String _source = '';
-  String _status = 'Wybierz źródło danych.';
+  String _status = 'Pick a data source.';
   bool _running = false;
   final List<RowResult> _rows = [];
   List<String> _topNames = const [];
@@ -114,31 +114,31 @@ class _BenchPageState extends State<BenchPage> with SingleTickerProviderStateMix
     super.dispose();
   }
 
-  // ------------------------------------------------------------- źródło
+  // ------------------------------------------------------------- source
 
   Future<void> _fetch() async {
-    setState(() => _status = 'Pobieram…');
+    setState(() => _status = 'Fetching...');
     try {
       final sw = Stopwatch()..start();
       final bytes = await fetchBytes(Uri.parse(_url.text.trim()));
       sw.stop();
       setState(() {
         _bytes = bytes;
-        _source = 'sieć: ${(bytes.length / 1024).toStringAsFixed(0)} KB w ${sw.elapsedMilliseconds} ms';
-        _status = 'Dane gotowe. Uruchom benchmark.';
+        _source = 'network: ${(bytes.length / 1024).toStringAsFixed(0)} KB in ${sw.elapsedMilliseconds} ms';
+        _status = 'Data ready. Run the benchmark.';
       });
     } catch (e) {
-      setState(() => _status = 'Pobieranie nie powiodło się: $e');
+      setState(() => _status = 'Fetch failed: $e');
     }
   }
 
   Future<void> _generate() async {
-    setState(() => _status = 'Generuję 10k użytkowników w izolacie…');
+    setState(() => _status = 'Generating 10k users in an isolate...');
     final bytes = await Isolate.run(() => generateUsersJson(10000));
     setState(() {
       _bytes = bytes;
       _source = 'generator: ${(bytes.length / 1024).toStringAsFixed(0)} KB';
-      _status = 'Dane gotowe. Uruchom benchmark.';
+      _status = 'Data ready. Run the benchmark.';
     });
   }
 
@@ -148,20 +148,20 @@ class _BenchPageState extends State<BenchPage> with SingleTickerProviderStateMix
   @visibleForTesting
   List<String> get topNames => _topNames;
 
-  /// Używane przez testy widgetowe: wstrzyknięcie bajtów bez sieci.
+  /// Used by widget tests: inject bytes without the network.
   @visibleForTesting
   void loadBytes(Uint8List bytes, {String label = 'test'}) {
     setState(() {
       _bytes = bytes;
       _source = label;
-      _status = 'Dane gotowe.';
+      _status = 'Data ready.';
     });
   }
 
-  // ------------------------------------------------------------- pomiar
+  // ------------------------------------------------------------- measurement
 
-  /// Jeden wariant: start licznika janku, kilka iteracji (żeby animacja miała
-  /// szansę się zaciąć), stop. Między wariantami oddajemy klatkę UI.
+  /// One variant: start the jank meter, a few iterations (so the animation gets
+  /// a chance to stutter), stop. Between variants we yield a UI frame.
   Future<void> _runVariant(String name, Future<Object?> Function() fn, {int reps = 3}) async {
     await SchedulerBinding.instance.endOfFrame;
     _meter.start();
@@ -175,7 +175,7 @@ class _BenchPageState extends State<BenchPage> with SingleTickerProviderStateMix
       last = await fn();
       sw.stop();
       times.add(sw.elapsedMicroseconds / 1000);
-      await Future<void>.delayed(const Duration(milliseconds: 50)); // kilka klatek animacji między iteracjami
+      await Future<void>.delayed(const Duration(milliseconds: 50)); // a few animation frames between iterations
     }
     _meter.stop();
     times.sort();
@@ -192,19 +192,19 @@ class _BenchPageState extends State<BenchPage> with SingleTickerProviderStateMix
     setState(() {
       _running = true;
       _rows.clear();
-      _status = 'Benchmark w toku — obserwuj animację.';
+      _status = 'Benchmark in progress - watch the animation.';
     });
     final q = UserQuery.standard;
-    final bodyString = utf8.decode(bytes); // odpowiednik response.body
+    final bodyString = utf8.decode(bytes); // equivalent of response.body
     try {
-      // --- wątek UI
+      // --- UI thread
       await _runVariant('UI: slow (String + jsonDecode + fromJson + where)',
           () async => querySlow(decodeSlow(bodyString), q));
-      await _runVariant('UI: fused + obiekty + pętle',
+      await _runVariant('UI: fused + objects + loops',
           () async => queryObjects(decodeFused(bytes), q));
-      await _runVariant('UI: byte scanner -> kolumny',
+      await _runVariant('UI: byte scanner -> columns',
           () async => queryColumnar(decodeColumnar(bytes), q));
-      // --- izolaty
+      // --- isolates
       await _runVariant('compute(): slow -> List<User> (deep copy)', () async {
         final users = await compute(decodeSlow, bodyString);
         return querySlow(users, q);
@@ -213,11 +213,11 @@ class _BenchPageState extends State<BenchPage> with SingleTickerProviderStateMix
         final ttd = await scanInIsolate(bytes);
         return queryColumnar(UserTable.unpack(ttd.materialize()), q);
       });
-      await _runVariant('Isolate.run: cały pipeline w izolacie, wynik = top-100',
-          () => pipelineInIsolate(bytes, q)); // PipelineResult: 100 Stringów + mała mapa + bajty — tanie do skopiowania
-      setState(() => _status = 'Gotowe.');
+      await _runVariant('Isolate.run: whole pipeline in the isolate, result = top-100',
+          () => pipelineInIsolate(bytes, q)); // PipelineResult: 100 Strings + a small map + bytes - cheap to copy
+      setState(() => _status = 'Done.');
     } catch (e) {
-      setState(() => _status = 'Błąd: $e');
+      setState(() => _status = 'Error: $e');
     } finally {
       setState(() => _running = false);
     }
@@ -235,25 +235,25 @@ class _BenchPageState extends State<BenchPage> with SingleTickerProviderStateMix
         children: [
           TextField(
             controller: _url,
-            decoration: const InputDecoration(labelText: 'URL JSON (gist / raw GitHub)', border: OutlineInputBorder()),
+            decoration: const InputDecoration(labelText: 'JSON URL (gist / raw GitHub)', border: OutlineInputBorder()),
             maxLines: 2,
             style: const TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 8, children: [
-            FilledButton.tonal(onPressed: _running ? null : _fetch, child: const Text('Pobierz z URL')),
-            FilledButton.tonal(onPressed: _running ? null : _generate, child: const Text('Wygeneruj lokalnie')),
+            FilledButton.tonal(onPressed: _running ? null : _fetch, child: const Text('Fetch from URL')),
+            FilledButton.tonal(onPressed: _running ? null : _generate, child: const Text('Generate locally')),
             FilledButton(
               key: const Key('run'),
               onPressed: _bytes == null || _running ? null : _runAll,
-              child: const Text('Uruchom benchmark'),
+              child: const Text('Run benchmark'),
             ),
           ]),
           const SizedBox(height: 8),
           Text(_source, style: theme.textTheme.bodySmall),
           Text(_status, key: const Key('status')),
           const SizedBox(height: 12),
-          // Animacja-wskaźnik: jeśli parsowanie blokuje wątek UI, kółko staje.
+          // Indicator animation: if parsing blocks the UI thread, the spinner stops.
           Row(children: [
             RepaintBoundary(
               child: RotationTransition(
@@ -262,16 +262,16 @@ class _BenchPageState extends State<BenchPage> with SingleTickerProviderStateMix
               ),
             ),
             const SizedBox(width: 12),
-            const Expanded(child: Text('Kółko kręci się na wątku UI. Zacięcia = jank. Kolumna "jank" zlicza klatki > 16.7 ms podczas wariantu.')),
+            const Expanded(child: Text('The spinner runs on the UI thread. Stutters = jank. The "jank" column counts frames > 16.7 ms during a variant.')),
           ]),
           const SizedBox(height: 12),
           _ResultsTable(rows: _rows),
           if (_topNames.isNotEmpty) ...[
             const SizedBox(height: 12),
-            Text('Aktywni per kraj: ${_perCountry.entries.map((e) => '${e.key} ${e.value}').join(', ')}',
+            Text('Active per country: ${_perCountry.entries.map((e) => '${e.key} ${e.value}').join(', ')}',
                 style: theme.textTheme.bodySmall),
             const SizedBox(height: 8),
-            Text('Top ${_topNames.length} (PL, premium, aktywni):', style: theme.textTheme.titleSmall),
+            Text('Top ${_topNames.length} (PL, premium, active):', style: theme.textTheme.titleSmall),
             SizedBox(
               height: 200,
               child: ListView.builder(
@@ -300,7 +300,7 @@ class _ResultsTable extends StatelessWidget {
       defaultVerticalAlignment: TableCellVerticalAlignment.middle,
       children: [
         const TableRow(children: [
-          Text('Wariant', style: TextStyle(fontWeight: FontWeight.bold)),
+          Text('Variant', style: TextStyle(fontWeight: FontWeight.bold)),
           Text('ms', style: TextStyle(fontWeight: FontWeight.bold)),
           Text('jank', style: TextStyle(fontWeight: FontWeight.bold)),
           Text('vs 1', style: TextStyle(fontWeight: FontWeight.bold)),

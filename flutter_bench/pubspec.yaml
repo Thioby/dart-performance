@@ -1,8 +1,8 @@
 name: flutter_bench
 description: >-
-  Benchmark "pobierz 10k użytkowników jako JSON i przefiltruj" na urządzeniu:
-  te same warianty co w CLI (packages/users_pipeline), plus licznik janku
-  klatek pokazujący, co dzieje się z UI, gdy parsujesz na wątku głównym.
+  Benchmark "fetch 10k users as JSON and filter them" on a device:
+  the same variants as the CLI (packages/users_pipeline), plus a jank frame
+  counter showing what happens to the UI when you parse on the main thread.
 publish_to: 'none'
 version: 0.1.0+1
 
