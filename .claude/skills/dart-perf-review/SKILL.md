@@ -1,95 +1,98 @@
 ---
 name: dart-perf-review
-description: Audyt wydajności kodu Dart/Flutter pod kątem hot path - alokacje, boxing, typed data, JSON, bufory, async, leniwe pola globalne. Użyj, gdy użytkownik mówi "zoptymalizuj", "wolno", "jank", "lag", "GC", "zużycie pamięci", "performance" o kodzie Dart lub Flutter, albo prosi o review wydajnościowe. Zwraca listę konkretnych znalezisk z poprawkami i oszacowanym zyskiem; nie dotyka architektury bez pytania.
+description: Performance audit of Dart/Flutter code focused on hot paths - allocations, boxing, typed data, JSON, buffers, async overhead, lazily initialized globals. Use when the user says "optimize", "slow", "jank", "lag", "GC", "memory usage", "performance" about Dart or Flutter code, or asks for a performance review. Produces a list of concrete findings with fixes and estimated gains; does not change architecture without asking.
 ---
 
-# dart-perf-review — audyt hot path w Dart/Flutter
+# dart-perf-review — hot-path audit for Dart/Flutter
 
-Jesteś recenzentem wydajności. Twoim produktem jest **lista znalezisk** w formacie:
-`plik:linia — problem — poprawka (kod) — spodziewany zysk — jak zweryfikować`.
-Nie przepisuj całego pliku. Nie zmieniaj architektury (izolaty, baza, framework) bez zapytania — zaproponuj.
+> 🇬🇧 Active skill file. Polish version: `SKILL.pl.md` in this directory.
 
-Pełne uzasadnienia i liczby: `docs/dart-flutter-extreme-performance-guide.md` (sekcje 1, 2, 3, 5). Benchmarki do weryfikacji: `benchmarks/` (`tool/run.sh`). Jeśli repozytorium, w którym pracujesz, ich nie ma — zasady poniżej są samowystarczalne.
+You are a performance reviewer. Your deliverable is a **list of findings** in the form:
+`file:line — problem — fix (code) — expected gain — how to verify`.
+Do not rewrite whole files. Do not change architecture (isolates, database, framework) without asking — propose it instead.
 
-## Krok 1: znajdź hot path, zanim cokolwiek poprawisz
+Full reasoning and numbers: `docs/en/dart-flutter-extreme-performance-guide.md` (sections 1, 2, 3, 5, 6). Benchmarks for verification: `benchmarks/` (`tool/run.sh`) and the end-to-end case study `packages/users_pipeline/` (10k users from JSON: 93.6 ms → 12.0 ms). If the repository you are working in does not have them, the rules below are self-contained.
 
-Zapytaj siebie (lub użytkownika), *co* jest wywoływane często: per klatka (`build`, `paint`, `Ticker`), per żądanie/pakiet (`onData`, handler HTTP), per wiersz (parsery, pętle po danych). Optymalizuj **tylko** to. Kod uruchamiany raz przy starcie zostaw.
+## Step 1: find the hot path before you fix anything
 
-Jeśli nie ma pewności: poproś o profil (`dart run --observe` / DevTools `Performance` + `Memory → Allocation tracing`) albo napisz benchmark (skill `dart-benchmark`).
+Ask yourself (or the user) *what* runs often: per frame (`build`, `paint`, `Ticker`), per request/packet (`onData`, an HTTP handler), per row (parsers, loops over data). Optimize **only** that. Leave code that runs once at startup alone.
 
-## Krok 2: checklista znalezisk (od największego zysku)
+If unsure: ask for a profile (`dart run --observe` / DevTools `Performance` + `Memory → Allocation tracing`) or write a benchmark (skill `dart-benchmark`).
 
-### A. Alokacje w pętli (GC jank)
+## Step 2: finding checklist (largest gain first)
 
-Szukaj w hot path: `new`/konstruktorów, literałów `[]`/`{}`, `.map(`, `.where(`, `.toList()`, `.toSet()`, `List.generate`, `String +`, interpolacji `'$a'`, `.substring`, `.split`, `Offset(`, `Rect.fromLTWH(`, `Paint()`, `TextStyle(`, `EdgeInsets.` bez `const`, closure'ów przechwytujących zmienne.
+### A. Allocations in loops (GC jank)
 
-Poprawki:
-- obiekty niezmienne → `const` / `static final` zbudowane raz;
-- `map/where/toList` → jedna pętla `for` z prealokowanym wynikiem (4.6×);
-- `List<double>`/`List<int>` budowane `add()` → `Float64List(n)`/`Int32List(n)` (5–11×);
-- `List<Model>` aktualizowane co klatkę → Struct-of-Arrays na typed listach (14×);
-- `String +=` → `StringBuffer` (3.6×) lub bajty do `Uint8List`, gdy wynik idzie do I/O (10×).
+Look for, in hot paths: `new`/constructors, `[]`/`{}` literals, `.map(`, `.where(`, `.toList()`, `.toSet()`, `List.generate`, `String +`, `'$a'` interpolation, `.substring`, `.split`, `Offset(`, `Rect.fromLTWH(`, `Paint()`, `TextStyle(`, `EdgeInsets.` without `const`, closures capturing variables.
 
-### B. Boxing i reprezentacja liczb
+Fixes:
+- immutable objects → `const` / `static final` built once;
+- `map/where/toList` → one `for` loop with a preallocated result (4.6×);
+- `List<double>`/`List<int>` built with `add()` → `Float64List(n)`/`Int32List(n)` (5–11×);
+- `List<Model>` updated every frame → Struct-of-Arrays on typed lists (14×);
+- `String +=` → `StringBuffer` (3.6×) or bytes into a `Uint8List` when the result goes to I/O (10×).
 
-- `List<double>`, `Map<_, double>`, pola `num`/`Object`/`dynamic` trzymające double → każda wartość to obiekt 16 B. Zamień na `Float64List`/`Float32List` albo pola o statycznym typie `double` (AOT trzyma je unboxed).
-- `int` spoza ±2^62 → Mint (obiekt). Hash-e licz z `& 0x3fffffff` / w `Int32List`.
-- `Map<int,int>` jako histogram/lookup z małym zakresem kluczy → `Int32List(range)` (10.8×).
+### B. Boxing and number representation
 
-### C. Leniwe pola globalne w pętli
+- `List<double>`, `Map<_, double>`, `num`/`Object`/`dynamic` fields holding doubles → each value is a 16 B object. Switch to `Float64List`/`Float32List` or fields with a static `double` type (AOT keeps them unboxed).
+- `int` outside ±2^62 → Mint (an object). Compute hashes with `& 0x3fffffff` / in an `Int32List`.
+- `Map<int,int>` as a histogram/lookup over a small key range → `Int32List(range)` (10.8×).
 
-`final x = ...;` / `static final` / `late final` z inicjalizatorem, czytane w pętli → getter ze sprawdzeniem inicjalizacji przy każdym dostępie (2.3× wolniej). Poprawka: `final local = x;` przed pętlą, albo przekaż jako parametr.
+### C. Lazily initialized globals in loops
 
-### D. Granica I/O: Stringi tam, gdzie powinny być bajty
+`final x = ...;` / `static final` / `late final` with an initializer, read in a loop → a getter with an "initialized?" check on every access (2.3× slower). Fix: `final local = x;` before the loop, or pass it as a parameter.
 
-- `jsonEncode(x)` + `utf8.encode` → `JsonUtf8Encoder().convert(x)` trzymany w polu/top-level (1.6×); `response.write(str)` → `response..contentLength = b.length..add(b)`.
-- `jsonDecode(utf8.decode(bytes))` → `utf8.decoder.fuse(json.decoder).convert(bytes)` (1.2×); gdy potrzebne 1–2 pola z dużego JSON → parser strumieniowy lub format binarny.
-- Składanie fragmentów z `Socket`/`Stream<List<int>>`: `List<int>.addAll` lub `Uint8List` nowa kopia per fragment → `BytesBuilder(copy: false)` (100×) albo prealokowany bufor + `Uint8List.sublistView` (400×).
-- `utf8.decode` + `split` do parsowania protokołu → skan po `Uint8List` z offsetami (4×).
-- Stałe odpowiedzi (błędy, nagłówki) → prekomputowane `Uint8List` w `final` top-level.
+### D. I/O boundary: Strings where bytes should be
 
-### E. Async i izolaty
+- `jsonEncode(x)` + `utf8.encode` → `JsonUtf8Encoder().convert(x)` held in a field/top-level (1.6×); `response.write(str)` → `response..contentLength = b.length..add(b)`.
+- `jsonDecode(utf8.decode(bytes))` → `utf8.decoder.fuse(json.decoder).convert(bytes)` (1.2×); when you need 1–2 fields from a large JSON → a streaming parser or a binary format. Remember the case study: the fused decoder alone buys ~30 %; the tree and `fromJson` are the real cost (76 → 54 ms vs 12 ms with a byte scanner).
+- Assembling chunks from a `Socket`/`Stream<List<int>>`: `List<int>.addAll` or a new `Uint8List` copy per chunk → `BytesBuilder(copy: false)` (100×) or a preallocated buffer + `Uint8List.sublistView` (400×).
+- `utf8.decode` + `split` for protocol parsing → a byte scan over `Uint8List` with offsets (4×).
+- Constant responses (errors, headers) → precomputed `Uint8List` in a top-level `final`.
+- `DateTime.parse` ×N in `fromJson` when dates are never compared → keep epoch ms or an offset into the string.
 
-- `async`/`await` w funkcji, która nigdy nie czeka → `Future` + mikrotask per wywołanie; usuń `async` lub zwróć wartość synchronicznie.
-- `await for` z `.timeout()` per element → serializuje strumień i alokuje `Timer`; użyj `listen` z synchronicznym handlerem.
-- `compute()`/`Isolate.run` dla pracy < 1 ms → spawn kosztuje ~0.1–0.35 ms + kopia payloadu; zrób synchronicznie.
-- `SendPort.send(List<Map>)` → 128× wolniej niż `Uint8List`; przeprojektuj payload na płaskie bajty (skill `dart-isolates`).
+### E. Async and isolates
 
-### F. Baza danych / FFI
+- `async`/`await` in a function that never waits → a `Future` + microtask per call; drop `async` or return synchronously.
+- `await for` with `.timeout()` per element → serializes the stream and allocates a `Timer`; use `listen` with a synchronous handler.
+- `compute()`/`Isolate.run` for work < 1 ms → the spawn costs ~0.1–0.35 ms plus a payload copy; do it synchronously.
+- `SendPort.send(List<Map>)` → 128× slower than a `Uint8List`; `Isolate.run` returning 10k model objects is slower than parsing on the main thread (103 vs 94 ms). Redesign the payload as flat bytes (skill `dart-isolates`).
 
-- `execute(sql, args)` per wiersz → prepared statement `persistent: true` + jedna transakcja na paczkę (13×).
-- `select()` → `ResultSet` i `row['col']` w pętli po tysiącach wierszy → `stmt.raw` (`step()`, `columnInt64`, `columnBlobInto`) (4.7×).
-- `lookupFunction` / `@Native` bez `isLeaf` na krótkich, czystych funkcjach C → `isLeaf: true` (4×), tylko jeśli funkcja nie woła Darta i nie blokuje (skill `dart-ffi-perf`).
-- `ptr[i]` w pętli → `ptr.asTypedList(n)` (900×).
+### F. Database / FFI
 
-### G. Flutter (jeśli kod jest widgetowy)
+- `execute(sql, args)` per row → a prepared statement with `persistent: true` + one transaction per batch (13×).
+- `select()` → `ResultSet` and `row['col']` in a loop over thousands of rows → `stmt.raw` (`step()`, `columnInt64`, `columnBlobInto`) (4.7×).
+- `lookupFunction` / `@Native` without `isLeaf` on short, pure C functions → `isLeaf: true` (4×), only if the function never calls back into Dart and never blocks (skill `dart-ffi-perf`).
+- `ptr[i]` in a loop → `ptr.asTypedList(n)` (900×).
 
-`setState` wysoko w drzewie, brak `const`, alokacje w `build`, `Opacity`/`ClipPath` na animacjach, `canvas.drawCircle` w pętli zamiast `drawRawPoints`, brak `RepaintBoundary` wokół niezależnych animacji, `ListView(children: ...)` zamiast `.builder`. Szczegóły: skill `flutter-render-perf`.
+### G. Flutter (if the code is widget code)
 
-## Krok 3: format raportu
+`setState` high in the tree, missing `const`, allocations in `build`, `Opacity`/`ClipPath` on animations, `canvas.drawCircle` in a loop instead of `drawRawPoints`, no `RepaintBoundary` around independent animations, `ListView(children: ...)` instead of `.builder`. Details: skill `flutter-render-perf`.
+
+## Step 3: report format
 
 ```
-## Znaleziska (posortowane wg zysku)
+## Findings (sorted by gain)
 
-1. lib/feed/parser.dart:42 — `utf8.decode(chunk).split('\n')` w `onData` per pakiet
-   Poprawka: skan po Uint8List z offsetami (przykład poniżej)
-   Zysk: ~4× na parsowaniu, zero alokacji String per linia
-   Weryfikacja: benchmarks `--only buffers` / DevTools Allocation tracing na klasie _OneByteString
+1. lib/feed/parser.dart:42 — `utf8.decode(chunk).split('\n')` in `onData` per packet
+   Fix: byte scan over Uint8List with offsets (example below)
+   Gain: ~4× on parsing, zero String allocations per line
+   Verify: benchmarks `--only buffers` / DevTools Allocation tracing on class _OneByteString
 
 2. ...
 
-## Nie ruszane (świadomie)
-- lib/app/bootstrap.dart — wykonuje się raz, alokacje nieistotne.
+## Deliberately left alone
+- lib/app/bootstrap.dart — runs once, allocations irrelevant.
 
-## Propozycje architektoniczne (wymagają decyzji)
-- Przenieść dekodowanie obrazów do izolatu z TransferableTypedData (praca ~8 ms/obraz).
+## Architectural proposals (need a decision)
+- Move image decoding to an isolate with TransferableTypedData (~8 ms of work per image).
 ```
 
-Każda poprawka ma pokazać **kod przed i po**, nie tylko opis. Jeśli zysk jest niepewny, napisz „do zmierzenia” i dodaj szkic benchmarku zamiast liczby.
+Every fix must show **code before and after**, not just a description. If the gain is uncertain, write "to be measured" and add a benchmark sketch instead of a number.
 
-## Czego NIE robić
+## What NOT to do
 
-- Nie zamieniaj `List<int>` na typed data w kodzie wykonywanym raz ani w małych kolekcjach (< 100 elementów) — zysk niemierzalny, czytelność spada.
-- Nie dodawaj `@pragma('vm:prefer-inline')` hurtowo; tylko na maleńkich akcesorach wołanych w pętli (jak `flat_buffers.dart`).
-- Nie używaj `@pragma('vm:unsafe:no-bounds-checks')` ani `vm:unsafe:no-interrupts` bez wyraźnej zgody — pierwsze usuwa bezpieczeństwo pamięci, drugie blokuje GC.
-- Nie obiecuj liczb spoza benchmarków; JIT i AOT różnią się (np. `List<int>` sum jest w JIT tak szybkie jak `Int32List`, w AOT 1.6× wolniejsze).
+- Do not replace `List<int>` with typed data in code that runs once or in small collections (< 100 elements) — the gain is unmeasurable and readability drops.
+- Do not sprinkle `@pragma('vm:prefer-inline')` everywhere; only on tiny accessors called in loops (as `flat_buffers.dart` does).
+- Do not use `@pragma('vm:unsafe:no-bounds-checks')` or `vm:unsafe:no-interrupts` without explicit consent — the first removes memory safety, the second blocks GC.
+- Do not promise numbers beyond the benchmarks; JIT and AOT differ (e.g. a `List<int>` sum is as fast as `Int32List` in JIT and 1.6× slower in AOT).

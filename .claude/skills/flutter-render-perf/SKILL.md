@@ -1,92 +1,96 @@
 ---
 name: flutter-render-perf
-description: Diagnoza i naprawa janku w Flutterze - rebuildy (const, setState nisko, ListenableBuilder z child), RepaintBoundary, CustomPainter/RenderObject z typed data i drawRawPoints/drawRawAtlas, saveLayer (Opacity, Clip), listy (builder, itemExtent), obrazy (cacheWidth), Impeller, workflow DevTools (--profile, Track rebuilds/paints, Allocation tracing). Użyj, gdy użytkownik zgłasza jank, dropped frames, długie klatki UI/Raster, wysokie zużycie pamięci GPU lub pyta, jak zoptymalizować widget/animację/listę.
+description: Diagnosing and fixing jank in Flutter - rebuilds (const, setState low, ListenableBuilder with child), RepaintBoundary, CustomPainter/RenderObject with typed data and drawRawPoints/drawRawAtlas, saveLayer (Opacity, Clip), lists (builder, itemExtent), images (cacheWidth), Impeller, the DevTools workflow (--profile, Track rebuilds/paints, Allocation tracing), measuring jank with addTimingsCallback. Use when the user reports jank, dropped frames, long UI/Raster frames, high GPU memory, or asks how to optimize a widget/animation/list.
 ---
 
-# flutter-render-perf — klatka w 8.3 ms
+# flutter-render-perf — a frame in 8.3 ms
 
-Model: UI thread (Dart: build → layout → paint → compositing) + Raster thread (Impeller → GPU). Każdy ma własny budżet 16.6 ms (60 Hz) / 8.3 ms (120 Hz). Najpierw ustal, **który** wątek przekracza budżet — leczy się je inaczej. Teoria GC/alokacji: `docs/dart-flutter-extreme-performance-guide.md` §1 i §4.
+> 🇬🇧 Active skill file. Polish version: `SKILL.pl.md` in this directory.
 
-## 1. Diagnoza (zawsze `flutter run --profile` na urządzeniu)
+Model: UI thread (Dart: build → layout → paint → compositing) + Raster thread (Impeller → GPU). Each has its own budget of 16.6 ms (60 Hz) / 8.3 ms (120 Hz). First establish **which** thread exceeds the budget — they are treated differently. GC/allocation theory: `docs/en/dart-flutter-extreme-performance-guide.md` §1 and §4; a device-side example with a jank counter: `flutter_bench/`.
 
-1. DevTools → **Performance**: Frame chart. Czerwone słupki UI → Dart; Raster → GPU/shadery/warstwy.
-2. Włącz **Track widget rebuilds**, **Track layouts**, **Track paints** → widgety z setkami rebuildów/s i paint poza granicami.
-3. **Memory → Allocation tracing** podczas animacji: które klasy są alokowane co klatkę (`Offset`, `Paint`, `_GrowableList`, `TextStyle`, Twoje modele). Zęby piły na wykresie sterty = scavenge; cel to płaska linia.
-4. Timeline: eventy `GC` tuż przed długą klatką = alokacje w pętli klatki.
-5. `flutter run --profile --trace-skia` / Impeller: `--enable-impeller`, overlay `debugPaintLayerBordersEnabled`, `debugRepaintRainbowEnabled` (przerysowania), `checkerboardOffscreenLayers` (saveLayer).
+## 1. Diagnosis (always `flutter run --profile` on a device)
 
-## 2. UI thread: rebuildy
+1. DevTools → **Performance**: Frame chart. Red bars on UI → Dart; on Raster → GPU/shaders/layers.
+2. Enable **Track widget rebuilds**, **Track layouts**, **Track paints** → widgets with hundreds of rebuilds/s and paints outside boundaries.
+3. **Memory → Allocation tracing** during the animation: which classes are allocated every frame (`Offset`, `Paint`, `_GrowableList`, `TextStyle`, your models). A sawtooth heap chart = scavenges; the goal is a flat line.
+4. Timeline: `GC` events right before a long frame = allocations in the frame loop.
+5. `flutter run --profile --trace-skia` / Impeller: `--enable-impeller`, overlays `debugPaintLayerBordersEnabled`, `debugRepaintRainbowEnabled` (repaints), `checkerboardOffscreenLayers` (saveLayer).
+6. In-app measurement: `SchedulerBinding.instance.addTimingsCallback` — count frames with `totalSpan > 16.7 ms` during an operation (`JankMeter` in `flutter_bench/lib/main.dart`).
+
+## 2. UI thread: rebuilds
 
 | 🐢 | 🚀 |
 |---|---|
-| `setState` w widgecie ekranu | `setState` w najmniejszym `StatefulWidget`; `ValueListenableBuilder`/`ListenableBuilder` wokół fragmentu |
-| `AnimationController.addListener(() => setState(() {}))` | `AnimatedBuilder(animation, child: staticSubtree, builder: ...)` — `child` nie jest rebuildowany; lub `FadeTransition`/`SlideTransition` (bez rebuildu, tylko repaint) |
-| `EdgeInsets.all(8)`, `TextStyle(...)`, `BoxDecoration(...)` w `build` | `const` / `static final` — `const` widget jest pomijany przez `identical()` i nigdy nie alokuje |
-| `widget.items.map((e) => Tile(e)).toList()` w `build` | `ListView.builder`/`SliverList` z `itemBuilder`, `itemExtent` lub `prototypeItem` |
-| lambdy przechwytujące `this` w `build` | metody instancji (`onPressed: _handleTap`) |
-| `MediaQuery.of(context)` w wielu miejscach (rebuild przy każdej zmianie) | `MediaQuery.sizeOf(context)`/`paddingOf` (zależność tylko od jednego aspektu) |
+| `setState` in the screen widget | `setState` in the smallest `StatefulWidget`; `ValueListenableBuilder`/`ListenableBuilder` around the fragment |
+| `AnimationController.addListener(() => setState(() {}))` | `AnimatedBuilder(animation, child: staticSubtree, builder: ...)` — `child` is not rebuilt; or `FadeTransition`/`SlideTransition` (no rebuild, repaint only) |
+| `EdgeInsets.all(8)`, `TextStyle(...)`, `BoxDecoration(...)` in `build` | `const` / `static final` — a `const` widget is skipped via `identical()` and never allocates |
+| `widget.items.map((e) => Tile(e)).toList()` in `build` | `ListView.builder`/`SliverList` with `itemBuilder`, `itemExtent` or `prototypeItem` |
+| lambdas capturing `this` in `build` | instance methods (`onPressed: _handleTap`) |
+| `MediaQuery.of(context)` in many places (rebuild on every change) | `MediaQuery.sizeOf(context)`/`paddingOf` (depend on one aspect only) |
 
-Zasada: rebuild poddrzewa = alokacja wszystkich jego `Widget`-ów (krótkożyjące obiekty → scavenge). Im niżej `setState`, tym mniej śmieci.
+Rule: a subtree rebuild = allocation of all its `Widget`s (short-lived objects → scavenge). The lower the `setState`, the less garbage.
 
-## 3. UI thread: layout i paint
+## 3. UI thread: layout and paint
 
-- `RepaintBoundary` wokół rzeczy animujących się **niezależnie** od reszty (i wokół statycznej, drogiej reszty, gdy sąsiad animuje). Za dużo granic = za dużo warstw/tekstur; sprawdź `debugRepaintRainbowEnabled`.
-- `CustomPainter`: `shouldRepaint` zwraca `true` tylko gdy dane się zmieniły; `super(repaint: listenable)` zamiast `setState` — repaint bez rebuildu.
-- `IntrinsicHeight/Width`, `Wrap`, zagnieżdżone `Flexible` z `mainAxisSize.min` → wielokrotne przebiegi layoutu; `ListView` z `shrinkWrap: true` w `Column` → layout całej listy.
-- `Text` w pętli → `TextPainter` layout jest drogi; w `CustomPainter` cache'uj `TextPainter`/`ui.Paragraph` dla stałych napisów.
+- `RepaintBoundary` around things that animate **independently** of the rest (and around a static, expensive rest when a sibling animates). Too many boundaries = too many layers/textures; check with `debugRepaintRainbowEnabled`.
+- `CustomPainter`: `shouldRepaint` returns `true` only when the data changed; `super(repaint: listenable)` instead of `setState` — a repaint without a rebuild.
+- `IntrinsicHeight/Width`, `Wrap`, nested `Flexible` with `mainAxisSize.min` → multiple layout passes; `ListView` with `shrinkWrap: true` inside a `Column` → layout of the whole list.
+- `Text` in a loop → `TextPainter` layout is expensive; in a `CustomPainter` cache `TextPainter`/`ui.Paragraph` for constant labels.
 
-### Painter zero-alloc (SoA + raw API)
+### A zero-alloc painter (SoA + raw APIs)
 
 ```dart
 class ParticlePainter extends CustomPainter {
   ParticlePainter(this.xy, Listenable tick) : super(repaint: tick);
-  final Float32List xy;                                   // [x0,y0,x1,y1,...] aktualizowane w miejscu
+  final Float32List xy;                                   // [x0,y0,x1,y1,...] updated in place
   static final _paint = Paint()..color = const Color(0xFFFFFFFF)..strokeWidth = 2..strokeCap = StrokeCap.round;
-  @override void paint(Canvas c, Size s) => c.drawRawPoints(PointMode.points, xy, _paint);   // 1 wywołanie, 0 Offsetów
+  @override void paint(Canvas c, Size s) => c.drawRawPoints(PointMode.points, xy, _paint);   // 1 call, 0 Offsets
   @override bool shouldRepaint(ParticlePainter old) => !identical(old.xy, xy);
 }
 ```
 
-Raw API przyjmujące typed data: `drawRawPoints(Float32List)`, `drawRawAtlas(Image, Float32List rstTransforms, Float32List rects, Int32List? colors, ...)`, `drawVertices(Vertices.raw(mode, Float32List positions, ...))`, `Path.addPolygon` (lista `Offset`, ale raz). Dla tysięcy sprite'ów `drawRawAtlas` jest jedynym rozsądnym wyborem.
+Raw APIs taking typed data: `drawRawPoints(Float32List)`, `drawRawAtlas(Image, Float32List rstTransforms, Float32List rects, Int32List? colors, ...)`, `drawVertices(Vertices.raw(mode, Float32List positions, ...))`, `Path.addPolygon` (a list of `Offset`, but once). For thousands of sprites `drawRawAtlas` is the only sensible choice.
 
-Pełna kontrola: `LeafRenderObjectWidget` + `RenderBox` (`sizedByParent = true`, `computeDryLayout`, `markNeedsPaint()` z `Ticker`) — layout raz, paint co klatkę, stan w typed data.
+Full control: `LeafRenderObjectWidget` + `RenderBox` (`sizedByParent = true`, `computeDryLayout`, `markNeedsPaint()` from a `Ticker`) — layout once, paint every frame, state in typed data. Complete example: guide §4.3.
 
 ## 4. Raster thread
 
-- `Opacity` widget = `saveLayer` (offscreen render target). Zamień: `Opacity` na liściu, `FadeTransition` na `RepaintBoundary`, `Image(opacity:)`, kolor z alfą w `Paint`/`Container(color:)`.
-- `ClipRRect`/`ClipPath`/`ClipOval` z `Clip.antiAlias(WithSaveLayer)` na animowanych elementach → `Clip.hardEdge` lub `DecoratedBox(borderRadius)`; unikaj klipowania przezroczystych warstw.
-- `BackdropFilter`, `ImageFilter.blur`, `ShaderMask` → drogie zawsze; ogranicz obszar `RepaintBoundary`, cache'uj statyczne tło jako `ui.Image` (`PictureRecorder` → `toImage`).
-- Obrazy: `Image.network(url, cacheWidth: w, cacheHeight: h)` — dekoduj do rozmiaru wyświetlania (4000×3000 → 48 MB tekstury). `ImageCache` liczy pamięć GPU, nie stertę Darta.
-- Impeller prekompiluje shadery (koniec „first-frame shader jank”), ale nie zmniejsza kosztu `saveLayer` ani liczby warstw.
-- Gradienty/cienie na dużych powierzchniach: `BoxShadow` z dużym `blurRadius` na każdej karcie listy → zastąp jednym obrazem/`DecorationImage` lub zmniejsz blur.
+- The `Opacity` widget = `saveLayer` (an offscreen render target). Replace: `Opacity` on a leaf, `FadeTransition` on a `RepaintBoundary`, `Image(opacity:)`, a color with alpha in `Paint`/`Container(color:)`.
+- `ClipRRect`/`ClipPath`/`ClipOval` with `Clip.antiAlias(WithSaveLayer)` on animated elements → `Clip.hardEdge` or `DecoratedBox(borderRadius)`; avoid clipping transparent layers.
+- `BackdropFilter`, `ImageFilter.blur`, `ShaderMask` → always expensive; limit the `RepaintBoundary` area, cache a static background as a `ui.Image` (`PictureRecorder` → `toImage`).
+- Images: `Image.network(url, cacheWidth: w, cacheHeight: h)` — decode to the display size (4000×3000 → a 48 MB texture). `ImageCache` counts GPU memory, not the Dart heap.
+- Impeller precompiles shaders (no more "first-frame shader jank"), but does not reduce the cost of `saveLayer` or the number of layers.
+- Gradients/shadows on large surfaces: a `BoxShadow` with a large `blurRadius` on every list card → replace with one image/`DecorationImage` or reduce the blur.
 
-## 5. Listy i scroll
+## 5. Lists and scrolling
 
-- `ListView.builder`/`GridView.builder`, `itemExtent` lub `prototypeItem` (layout bez mierzenia), `cacheExtent` dobrany do prędkości scrolla.
-- `addAutomaticKeepAlives: false`, `addRepaintBoundaries: false` gdy elementy są tanie i statyczne (granica per element kosztuje więcej, niż daje); zostaw `true`, gdy elementy animują się niezależnie.
-- `AutomaticKeepAlive`/`KeepAlive` tylko dla elementów z kosztownym stanem.
-- Slivers zamiast zagnieżdżonych scrolli; `SliverFixedExtentList` dla stałej wysokości.
+- `ListView.builder`/`GridView.builder`, `itemExtent` or `prototypeItem` (layout without measuring), a `cacheExtent` matched to the scroll speed.
+- `addAutomaticKeepAlives: false`, `addRepaintBoundaries: false` when the items are cheap and static (a boundary per item costs more than it saves); keep `true` when items animate independently.
+- `AutomaticKeepAlive`/`KeepAlive` only for items with expensive state.
+- Slivers instead of nested scrolls; `SliverFixedExtentList` for a constant height.
+- Data for long lists: a columnar model with lazy per-row decoding (`UserTable.fullName(i)` in `packages/users_pipeline`) instead of 10k model objects with `DateTime`s.
 
-## 6. Animacje: Ticker bez setState
+## 6. Animations: a Ticker without setState
 
 ```dart
-// 🐢 controller.addListener(() => setState(() {}));           // rebuild drzewa 120×/s
+// 🐢 controller.addListener(() => setState(() {}));           // rebuilds the tree 120×/s
 // 🚀 AnimatedBuilder(animation: controller, child: heavyStatic, builder: (_, child) => Transform.translate(offset: ..., child: child));
-// 🚀🚀 RenderObject z Ticker -> markNeedsPaint(); dane w Float32List; drawRawPoints/drawRawAtlas
+// 🚀🚀 a RenderObject with a Ticker -> markNeedsPaint(); data in a Float32List; drawRawPoints/drawRawAtlas
 ```
 
-Implicit animations (`AnimatedContainer`) są wygodne, ale rebuildują; dla 60+ elementów użyj explicit `*Transition` z `RepaintBoundary`.
+Implicit animations (`AnimatedContainer`) are convenient but rebuild; for 60+ elements use explicit `*Transition`s with a `RepaintBoundary`.
 
-## 7. Format odpowiedzi przy review
+## 7. Response format for a review
 
-Dla każdego znaleziska: `plik:linia — co się dzieje co klatkę — poprawka (kod) — jak zobaczyć w DevTools`. Oddziel UI-thread od Raster-thread. Jeśli nie da się stwierdzić bez profilu — napisz, jaki pomiar zrobić (sekcja 1), zamiast zgadywać.
+For every finding: `file:line — what happens every frame — fix (code) — how to see it in DevTools`. Separate UI-thread from Raster-thread findings. If it cannot be determined without a profile — say which measurement to take (section 1) instead of guessing.
 
-## 8. Checklista PR
+## 8. PR checklist
 
-- [ ] zero alokacji w `paint()`/`Ticker` (DevTools Allocation tracing płaskie przez 10 s animacji)
-- [ ] `const` gdzie się da; `setState` w najmniejszym widgecie; `child:` w builderach
-- [ ] `RepaintBoundary` wokół niezależnych animacji (i tylko tam)
-- [ ] brak `Opacity`/`ClipPath`/`BackdropFilter` na animujących się dużych powierzchniach
-- [ ] listy: `.builder` + `itemExtent`/`prototypeItem`
-- [ ] obrazy z `cacheWidth/Height`
-- [ ] profil `--profile` przed/po dołączony do PR (p90 czasu klatki UI i Raster)
+- [ ] zero allocations in `paint()`/`Ticker` (DevTools Allocation tracing flat over 10 s of animation)
+- [ ] `const` wherever possible; `setState` in the smallest widget; `child:` in builders
+- [ ] `RepaintBoundary` around independent animations (and only there)
+- [ ] no `Opacity`/`ClipPath`/`BackdropFilter` on animating large surfaces
+- [ ] lists: `.builder` + `itemExtent`/`prototypeItem`
+- [ ] images with `cacheWidth/Height`
+- [ ] a `--profile` before/after attached to the PR (p90 UI and Raster frame times)

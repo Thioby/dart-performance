@@ -31,7 +31,7 @@ AOT budowany jest przez `dart build cli` (pakiet `sqlite3` ≥ 3 używa native-a
 
 ## Skille
 
-Skille leżą w `.claude/skills/<nazwa>/SKILL.md` i są wykrywane przez Claude Code w tym repozytorium (można je skopiować do `~/.claude/skills/`, by działały globalnie).
+Skille leżą w `.claude/skills/<nazwa>/SKILL.md` (aktywny plik, po angielsku — angielskie opisy trafniej wyzwalają skill; polska wersja referencyjna obok jako `SKILL.pl.md`) i są wykrywane przez Claude Code w tym repozytorium (można je skopiować do `~/.claude/skills/`, by działały globalnie).
 
 | Skill | Kiedy się włącza | Co daje |
 |---|---|---|

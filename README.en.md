@@ -14,7 +14,7 @@ A workshop on "how to write extremely fast code": two guides (Rust and Dart/Flut
 | [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md) | Reference results (Dart 3.13.5, Linux x64, 4 vCPU) |
 | [`packages/users_pipeline/`](packages/users_pipeline/) | **Case study**: 10k users from JSON (real fetch from raw GitHub/a gist, local fallback) → decode → filter/sort/group → encode, 4 variants from `jsonDecode`+`fromJson`+`where` to a byte scanner → columns; `Isolate.run` with `List<User>` vs `TransferableTypedData`. AOT: 93.6 ms → 12.0 ms (7.8×) |
 | [`flutter_bench/`](flutter_bench/) | Flutter app with the same variants + a frame-jank counter (`addTimingsCallback`); `flutter test` drives every variant |
-| [`.claude/skills/`](.claude/skills/) | Claude Code skills (written in Polish): `dart-perf-review`, `dart-zero-alloc`, `dart-ffi-perf`, `dart-isolates`, `flutter-render-perf`, `dart-benchmark` |
+| [`.claude/skills/`](.claude/skills/) | Claude Code skills (English, Polish copies as `SKILL.pl.md`): `dart-perf-review`, `dart-zero-alloc`, `dart-ffi-perf`, `dart-isolates`, `flutter-render-perf`, `dart-benchmark` |
 
 ## Quick start
 
@@ -31,7 +31,7 @@ AOT is built with `dart build cli` (package `sqlite3` ≥ 3 uses native-asset bu
 
 ## Skills
 
-Skills live in `.claude/skills/<name>/SKILL.md` and are picked up by Claude Code inside this repository (copy them to `~/.claude/skills/` to make them global). Their bodies are in Polish; Claude reads them regardless of the language you prompt in.
+Skills live in `.claude/skills/<name>/SKILL.md` (the active file, in English; a Polish reference copy sits next to it as `SKILL.pl.md`) and are picked up by Claude Code inside this repository (copy them to `~/.claude/skills/` to make them global).
 
 | Skill | Triggers on | What it delivers |
 |---|---|---|
